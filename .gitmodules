@@ -1,3 +1,9 @@
 [submodule "locate-3d"]
 	path = locate-3d
 	url = https://github.com/facebookresearch/locate-3d.git
+[submodule "dust3r"]
+	path = dust3r
+	url = https://github.com/naver/dust3r
+[submodule "MASt3R-SLAM"]
+	path = MASt3R-SLAM
+	url = https://github.com/rmurai0610/MASt3R-SLAM
