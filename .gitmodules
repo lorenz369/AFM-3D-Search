@@ -1,0 +1,3 @@
+[submodule "locate-3d"]
+	path = locate-3d
+	url = https://github.com/facebookresearch/locate-3d.git
