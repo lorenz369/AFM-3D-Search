@@ -31,6 +31,11 @@ git submodule update --init --recursive
 git submodule update --remote
 ```
 
+This repository includes the following submodules:
+- `locate-3d`: Facebook's Locate3D library
+- `dust3r`: NAVER LABS Europe's DUSt3R library
+- `MASt3R-SLAM`: MASt3R-SLAM library
+
 ### Server Login
 Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=58022 s0125@atcremers45.in.tum.de)
 ```bash
@@ -70,6 +75,7 @@ salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:0
 ```
 
 ## DUSt3R
+DUSt3R is included as a submodule in the `dust3r/` directory.
 
 ### Environment Setup
 
@@ -121,6 +127,7 @@ python3 demo.py --model_name DUSt3R_ViTLarge_BaseDecoder_224_linear
 ```
 
 ## MASt3R SLAM
+MASt3R-SLAM is included as a submodule in the `MASt3R-SLAM/` directory.
 
 ### Environment Setup
 
