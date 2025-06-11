@@ -15,6 +15,10 @@
 - [MASt3R SLAM](#mast3r-slam)
   - [Environment Setup](#environment-setup-1)
   - [Checkpoints](#checkpoints)
+- [Visualization of Point Clouds](#visualization-of-point-clouds)
+  - [Environment Setup](#environment-setup-2)
+  - [Usage](#usage)
+  - [Script Options](#script-options)
 
 ## Setup
 
@@ -206,3 +210,56 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth -P checkpoints/
 wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl -P checkpoints/
 ```
+
+## Visualization of Point Clouds
+
+Interactive 3D visualization of PLY point clouds using Rerun SDK, with support for synchronized keyframe images.
+
+### Environment Setup
+
+#### Using uv
+```bash
+# Create and activate the virtual environment
+uv venv .rerun_env
+source .rerun_env/bin/activate
+
+# Install required packages
+uv pip install rerun-sdk plyfile pillow
+```
+
+### Usage
+
+The visualization script supports PLY point clouds with optional keyframe images:
+
+```bash
+# Basic usage with default paths
+python visualize_pointcloud.py
+
+# Visualize only the pointcloud (skip keyframes)
+python visualize_pointcloud.py --no-keyframes
+
+# Specify custom paths
+python visualize_pointcloud.py --ply path/to/your.ply --keyframes path/to/keyframes/
+```
+
+### Script Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--ply` | Path to PLY pointcloud file | `data/mast3r_results/AFM_Video_Marco_1.ply` |
+| `--keyframes` | Path to keyframes directory | `data/mast3r_results/keyframes/AFM_Video_Marco_1` |
+| `--no-keyframes` | Skip loading keyframe images | False |
+
+#### Features
+
+- **Interactive 3D visualization** of point clouds with colors
+- **Timeline scrubbing** through keyframe images
+- **Synchronized display** of 3D reconstruction and original camera views
+- **Automatic color normalization** for PLY files
+- **Error handling** for missing files or corrupted images
+
+#### Requirements
+
+- PLY files with vertex coordinates (x, y, z)
+- Optional: RGB color data (red, green, blue fields)
+- Optional: Keyframe images in PNG format with timestamp filenames
