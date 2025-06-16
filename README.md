@@ -38,7 +38,7 @@ git submodule update --init --recursive
 git submodule update --remote
 ```
 
-This repository includes the following submodules:
+This repository includes the following open-source submodules:
 - `locate-3d`: Facebook's Locate3D library
 - `dust3r`: NAVER LABS Europe's DUSt3R library
 - `MASt3R-SLAM`: MASt3R-SLAM library
