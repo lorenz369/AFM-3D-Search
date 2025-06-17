@@ -12,14 +12,11 @@ Large datasets and results are available in our [Google Drive folder](https://dr
   - [CPU Usage](#cpu-usage)
   - [Disk Space](#disk-space)
   - [Debugging Session](#debugging-session)
-- [DUSt3R](#dust3r)
-  - [Environment Setup](#environment-setup)
-  - [Demo](#demo)
 - [MASt3R SLAM](#mast3r-slam)
-  - [Environment Setup](#environment-setup-1)
+  - [Environment Setup](#environment-setup)
   - [Checkpoints](#checkpoints)
 - [Visualization of Point Clouds](#visualization-of-point-clouds)
-  - [Environment Setup](#environment-setup-2)
+  - [Environment Setup](#environment-setup-1)
   - [Usage](#usage)
   - [Script Options](#script-options)
 
@@ -40,7 +37,6 @@ git submodule update --remote
 
 This repository includes the following open-source submodules:
 - `locate-3d`: Facebook's Locate3D library
-- `dust3r`: NAVER LABS Europe's DUSt3R library
 - `MASt3R-SLAM`: MASt3R-SLAM library
 
 ### Server Login
@@ -81,58 +77,6 @@ df -f
 ### Debugging Session
 ```bash
 salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:00:00 --mail-type=NONE --part=PRACT --qos=practical_course
-```
-
-## DUSt3R
-DUSt3R is included as a submodule in the `dust3r/` directory.
-
-### Environment Setup
-
-#### Using uv
-To install using the recommended script, run:
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
-```
-
-Dependencies with uv:
-```bash
-git clone --recursive https://github.com/naver/dust3r
-uv venv .dust3r_venv --python 3.11
-source .dust3r_venv/bin/activate
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-cd dust3r
-uv pip install -r requirements.txt
-# DUST3R relies on RoPE positional embeddings for which you can compile some cuda kernels for faster runtime.
-cd croco/models/curope/
-python setup.py build_ext --inplace
-cd ../../../
-```
-
-#### Using conda
-```bash
-conda create -n dust3r python=3.11 cmake=3.14.0
-conda activate dust3r 
-conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia  # use the correct version of cuda for your system
-pip install -r requirements.txt
-# Optional: you can also install additional packages to:
-# - add support for HEIC images
-# - add pyrender, used to render depthmap in some datasets preprocessing
-# - add required packages for visloc.py
-pip install -r requirements_optional.txt
-```
-
-Additional setup:
-```bash
-# DUST3R relies on RoPE positional embeddings for which you can compile some cuda kernels for faster runtime.
-cd croco/models/curope/
-python setup.py build_ext --inplace
-cd ../../../
-```
-
-### Demo
-```bash
-python3 demo.py --model_name DUSt3R_ViTLarge_BaseDecoder_224_linear
 ```
 
 ## MASt3R SLAM
