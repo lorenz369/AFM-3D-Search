@@ -45,14 +45,16 @@ This repository includes the following open-source submodules:
 
 ### Server Login
 Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=58022 s0125@atcremers45.in.tum.de)
-```bash
-ssh -p 58022 s0125@atcremers45.in.tum.de
-```
 
-Switch node (with pw)
-```bash
-ssh s0125@atcremers46.in.tum.de
-```
+**Server Status Monitor**: [https://adm9.in.tum.de/status](https://adm9.in.tum.de/status)
+
+| Server | SSH Command | RAM | GPU VRAM | Notes |
+|--------|-------------|-----|----------|-------|
+| atcremers45 | `ssh -p 58022 s0125@atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
+| atcremers71 | `ssh -p 58022 s0125@atcremers71.in.tum.de` | 64 GB | 16 GB | |
+| atcremers72 | `ssh -p 58022 s0125@atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
+| devcube1 | `ssh -p 58022 s0125@devcube1.cvai.cit.tum.de` | 251 GB | 24 GB | High-end server |
+| devcube2 | `ssh -p 58022 s0125@devcube2.cvai.cit.tum.de` | 251 GB | 24 GB | High-end server |
 
 Copy stuff to server (example)
 ```bash
