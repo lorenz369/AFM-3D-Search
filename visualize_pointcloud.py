@@ -9,8 +9,57 @@ import numpy as np
 from plyfile import PlyData
 import argparse
 import os
+import glob
 from PIL import Image
 from scipy.spatial.transform import Rotation
+
+def discover_files(base_dir):
+    """Auto-discover all required files from the top-level directory."""
+    base_dir = os.path.abspath(base_dir)
+    
+    # Find the PLY file to determine the base name
+    ply_files = glob.glob(os.path.join(base_dir, "*.ply"))
+    if not ply_files:
+        raise FileNotFoundError(f"No PLY file found in {base_dir}")
+    
+    ply_path = ply_files[0]
+    base_name = os.path.splitext(os.path.basename(ply_path))[0]
+    
+    # Construct all paths
+    poses_file = os.path.join(base_dir, f"{base_name}.txt")
+    intrinsics_file = os.path.join(base_dir, f"{base_name}_with_intrinsics.txt")
+    keyframes_dir = os.path.join(base_dir, "keyframes")
+    depth_dir = os.path.join(base_dir, "depth_maps")
+    
+    # Verify all required files exist
+    missing_files = []
+    if not os.path.exists(poses_file):
+        missing_files.append(poses_file)
+    if not os.path.exists(intrinsics_file):
+        missing_files.append(intrinsics_file)
+    if not os.path.exists(keyframes_dir):
+        missing_files.append(keyframes_dir)
+    if not os.path.exists(depth_dir):
+        missing_files.append(depth_dir)
+    
+    if missing_files:
+        print(f"Warning: Missing files/directories: {missing_files}")
+    
+    print(f"Discovered files in {base_dir}:")
+    print(f"  PLY: {ply_path}")
+    print(f"  Poses: {poses_file}")
+    print(f"  Intrinsics: {intrinsics_file}")
+    print(f"  Keyframes: {keyframes_dir}")
+    print(f"  Depth maps: {depth_dir}")
+    
+    return {
+        'ply_path': ply_path,
+        'poses_file': poses_file,
+        'intrinsics_file': intrinsics_file,
+        'keyframes_dir': keyframes_dir,
+        'depth_dir': depth_dir,
+        'base_name': base_name
+    }
 
 def read_ply_file(ply_path):
     """Read PLY file and extract points and colors."""
@@ -31,6 +80,7 @@ def read_camera_data(poses_file, intrinsics_file):
     """
     Read and combine camera pose and intrinsics data from two separate files.
     The poses file uses timestamps, while intrinsics file uses frame indices.
+    Returns data indexed by frame_id for consistent mapping with keyframes/depth.
     """
     cameras = {}
 
@@ -54,7 +104,7 @@ def read_camera_data(poses_file, intrinsics_file):
             pose_parts = [float(p) for p in parts[1:8]]  # tx, ty, tz, qx, qy, qz, qw
             poses_data.append((timestamp, pose_parts))
 
-    # 2. Read intrinsics and depth map info
+    # 2. Read intrinsics and frame info
     if not os.path.exists(intrinsics_file):
         print(f"Warning: Intrinsics file not found: {intrinsics_file}")
         return {}
@@ -69,21 +119,16 @@ def read_camera_data(poses_file, intrinsics_file):
             continue
         
         parts = line.split()
-        if len(parts) >= 18:
+        if len(parts) >= 17:  # Updated for new format without depth paths
             frame_idx = int(parts[0])
             tx, ty, tz, qx, qy, qz, qw = [float(p) for p in parts[1:8]]
-            width, height = int(parts[8]), int(parts[9])
-            fx, fy, cx, cy = [float(p) for p in parts[10:14]]
-            depth_map_path = parts[17]
+            fx, fy, cx, cy = [float(p) for p in parts[8:12]]
             
             intrinsics_data.append({
                 'frame_idx': frame_idx,
                 'translation': np.array([tx, ty, tz]),
                 'rotation_quat': np.array([qx, qy, qz, qw]),
-                'width': width,
-                'height': height,
-                'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy,
-                'depth_map_path': depth_map_path
+                'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy
             })
 
     # 3. Associate poses with intrinsics by index (assuming they correspond by order)
@@ -99,10 +144,12 @@ def read_camera_data(poses_file, intrinsics_file):
         
         rotation = Rotation.from_quat([qx, qy, qz, qw])
         
-        # Fix intrinsics if they look wrong (common issue)
+        # Get intrinsics
         fx, fy = intrinsics_entry['fx'], intrinsics_entry['fy']
         cx, cy = intrinsics_entry['cx'], intrinsics_entry['cy']
-        width, height = intrinsics_entry['width'], intrinsics_entry['height']
+        
+        # Estimate reasonable image size if not available (common default)
+        width, height = 640, 480
         
         # If cx, cy are zero, use image center as a reasonable default
         if cx == 0.0 and cy == 0.0:
@@ -114,56 +161,59 @@ def read_camera_data(poses_file, intrinsics_file):
             fx = fy = max(width, height) * 0.8  # Reasonable estimate
             print(f"Warning: Small focal length detected. Using estimate: fx={fx}, fy={fy}")
             
-        cameras[timestamp] = {
+        frame_id = intrinsics_entry['frame_idx']
+        cameras[frame_id] = {
+            'timestamp': timestamp,
             'translation': np.array([tx, ty, tz]),
             'rotation_quat': np.array([qx, qy, qz, qw]),
             'rotation_matrix': rotation.as_matrix(),
             'intrinsics': np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]]),
             'resolution': (width, height),
-            'depth_map_path': intrinsics_entry['depth_map_path'],
-            'frame_idx': intrinsics_entry['frame_idx']
+            'frame_idx': frame_id
         }
 
     print(f"Successfully associated {len(cameras)} camera entries.")
     return cameras
 
 def visualize_slam_data(
-    ply_path, 
-    keyframes_dir, 
-    poses_file, 
-    intrinsics_file, 
-    depth_dir,
+    files_info,
+    mode="serve",
     remote_host=None, 
     remote_port=9876
 ):
     """Visualize complete SLAM data."""
     
-    rr.init("AFM_3D_SLAM_Visualization")
+    rr.init("AFM_3D_SLAM_Visualization", spawn=False)
 
-    if remote_host:
-        rr.connect(addr=f"{remote_host}:{remote_port}")
-    else:
-        rr.spawn()
+    if mode == "save":
+        rr.save("output.rrd")
+    elif mode == "serve":
+        if remote_host:
+            rr.serve_grpc(grpc_port=remote_port)
+        else:
+            rr.spawn()
 
     # Set up a static reference frame
     rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
 
     # Log the main point cloud
-    points, colors = read_ply_file(ply_path)
+    points, colors = read_ply_file(files_info['ply_path'])
     if colors is not None:
         rr.log("world/point_cloud", rr.Points3D(points, colors=colors))
     else:
         rr.log("world/point_cloud", rr.Points3D(points))
 
-    # Load combined camera data
-    camera_data = read_camera_data(poses_file, intrinsics_file)
-    sorted_timestamps = sorted(camera_data.keys())
+    # Load combined camera data (indexed by frame_id)
+    camera_data = read_camera_data(files_info['poses_file'], files_info['intrinsics_file'])
+    sorted_frame_ids = sorted(camera_data.keys())
 
     # Log camera poses, keyframes, and depth maps over time
-    for timestamp in sorted_timestamps:
-        rr.set_time_seconds("timeline", timestamp)
-        cam_info = camera_data[timestamp]
-
+    for frame_id in sorted_frame_ids:
+        cam_info = camera_data[frame_id]
+        
+        # Use timestamp for the timeline
+        rr.set_time("timeline", timestamp=cam_info['timestamp'])
+        
         # Log camera transform
         rr.log(
             f"world/camera",
@@ -173,35 +223,27 @@ def visualize_slam_data(
             )
         )
 
-        # Log keyframe image
-        keyframe_path = os.path.join(keyframes_dir, f"{timestamp}.png")
+        # Log keyframe image using frame_id (new consistent naming)
+        keyframe_path = os.path.join(files_info['keyframes_dir'], f"{frame_id:06d}.png")
         if os.path.exists(keyframe_path):
-            rr.log(
-                "world/camera/image", 
-                rr.Image(keyframe_path).compress(jpeg_quality=80)
-            )
+            try:
+                rr.log(
+                    "world/camera/image", 
+                    rr.Image(np.array(Image.open(keyframe_path))).compress(jpeg_quality=80)
+                )
+            except Exception as e:
+                print(f"Error loading keyframe image from {keyframe_path}: {e}")
         else:
             print(f"Warning: Keyframe not found at {keyframe_path}")
         
-        # Log depth map
-        # The depth map path in the intrinsics file is relative, need to fix the prefix
-        depth_path = cam_info['depth_map_path']
-        
-        # Fix the path prefix if it starts with 'logs/' - should be 'MASt3R-SLAM/logs/'
-        if depth_path.startswith('logs/'):
-            depth_path = 'MASt3R-SLAM/' + depth_path
-        
-        if not os.path.isabs(depth_path):
-            # If it's still a relative path, make it relative to the workspace root
-            depth_path = os.path.join(os.getcwd(), depth_path)
-        depth_path = os.path.normpath(depth_path)
-
+        # Log depth map using frame_id (new consistent naming)
+        depth_path = os.path.join(files_info['depth_dir'], f"{frame_id:06d}.npy")
         if os.path.exists(depth_path):
             try:
                 depth_map = np.load(depth_path)
                 rr.log(
                     "world/camera/depth",
-                    rr.DepthImage(depth_map, from_parent=True)
+                    rr.DepthImage(depth_map)
                 )
                 print(f"Loaded depth map from {depth_path}, shape: {depth_map.shape}")
             except Exception as e:
@@ -224,31 +266,35 @@ def visualize_slam_data(
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize MASt3R SLAM results with Rerun")
-    parser.add_argument("--ply", 
-                       default="MASt3R-SLAM/logs/depth_video2_5_sec_fixed/AFM_Video_Marco_2_5_sec.ply")
-    parser.add_argument("--keyframes", 
-                       default="MASt3R-SLAM/logs/depth_video2_5_sec_fixed/keyframes/AFM_Video_Marco_2_5_sec")
-    parser.add_argument("--poses", 
-                       default="MASt3R-SLAM/logs/depth_video2_5_sec_fixed/AFM_Video_Marco_2_5_sec.txt")
-    parser.add_argument("--intrinsics",
-                       default="MASt3R-SLAM/logs/depth_video2_5_sec_fixed/AFM_Video_Marco_2_5_sec_with_intrinsics_and_depth.txt")
-    parser.add_argument("--depth-dir",
-                       default="MASt3R-SLAM/logs/depth_video2_5_sec_fixed/depth_maps")
+    parser.add_argument("slam_dir", 
+                       help="Top-level directory containing SLAM results (e.g., logs/depth_video2_5_sec_test)")
+    parser.add_argument("--mode",
+                       choices=["serve", "save"],
+                       default="serve",
+                       help="Set the visualization mode: 'serve' to stream, 'save' to file.")
     parser.add_argument("--remote-host",
                        help="Remote host IP for Rerun streaming")
     parser.add_argument("--remote-port", type=int, default=9876)
     
     args = parser.parse_args()
 
+    # Auto-discover all files from the top-level directory
+    try:
+        files_info = discover_files(args.slam_dir)
+    except Exception as e:
+        print(f"Error discovering files: {e}")
+        return
+
     visualize_slam_data(
-        args.ply, 
-        args.keyframes, 
-        args.poses, 
-        args.intrinsics,
-        args.depth_dir,
-        args.remote_host, 
-        args.remote_port
+        files_info,
+        mode=args.mode,
+        remote_host=args.remote_host, 
+        remote_port=args.remote_port
     )
+
+    if args.mode == "serve" and args.remote_host:
+        print("\nVisualization server is running. Press Enter on the server terminal to exit.")
+        input()
 
 if __name__ == "__main__":
     main() 
