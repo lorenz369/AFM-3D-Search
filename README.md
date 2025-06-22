@@ -191,6 +191,25 @@ python visualize_pointcloud.py --no-keyframes
 python visualize_pointcloud.py --ply path/to/your.ply --keyframes path/to/keyframes/
 ```
 
+## Segment frames
+
+Segment all video frames with SAM.
+
+### Environment Setup
+
+#### Using uv
+```bash
+# Create and activate the virtual environment
+uv venv .segment_venv --python 3.11
+source .segment_venv/bin/activate
+
+# Install required packages
+uv pip install torch torchvision torchaudio
+uv pip install git+https://github.com/facebookresearch/segment-anything.git
+
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth -O sam_vit_h.pth
+
+```
 ### Script Options
 
 | Option | Description | Default |
