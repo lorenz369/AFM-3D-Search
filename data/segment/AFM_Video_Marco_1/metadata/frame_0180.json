@@ -1,0 +1,122 @@
+[
+  {
+    "object_id": 1,
+    "area": 1316520,
+    "bbox": [
+      4,
+      200,
+      911,
+      1719
+    ],
+    "predicted_iou": 1.0399786233901978,
+    "stability_score": 0.9930938482284546
+  },
+  {
+    "object_id": 2,
+    "area": 345248,
+    "bbox": [
+      845,
+      114,
+      234,
+      1805
+    ],
+    "predicted_iou": 1.0243602991104126,
+    "stability_score": 0.9887434840202332
+  },
+  {
+    "object_id": 3,
+    "area": 31809,
+    "bbox": [
+      0,
+      1564,
+      452,
+      126
+    ],
+    "predicted_iou": 0.9806459546089172,
+    "stability_score": 0.9785447716712952
+  },
+  {
+    "object_id": 4,
+    "area": 3410,
+    "bbox": [
+      911,
+      86,
+      168,
+      69
+    ],
+    "predicted_iou": 0.9629117250442505,
+    "stability_score": 0.9788098931312561
+  },
+  {
+    "object_id": 5,
+    "area": 1688,
+    "bbox": [
+      315,
+      1857,
+      36,
+      50
+    ],
+    "predicted_iou": 0.9573490023612976,
+    "stability_score": 0.9732402563095093
+  },
+  {
+    "object_id": 6,
+    "area": 32490,
+    "bbox": [
+      877,
+      162,
+      86,
+      1051
+    ],
+    "predicted_iou": 0.9549933671951294,
+    "stability_score": 0.96100914478302
+  },
+  {
+    "object_id": 7,
+    "area": 131709,
+    "bbox": [
+      0,
+      1564,
+      461,
+      351
+    ],
+    "predicted_iou": 1.0337071418762207,
+    "stability_score": 0.987129807472229
+  },
+  {
+    "object_id": 8,
+    "area": 239381,
+    "bbox": [
+      0,
+      0,
+      1079,
+      277
+    ],
+    "predicted_iou": 1.0173702239990234,
+    "stability_score": 0.9902805685997009
+  },
+  {
+    "object_id": 9,
+    "area": 299167,
+    "bbox": [
+      689,
+      233,
+      225,
+      1686
+    ],
+    "predicted_iou": 0.9832116365432739,
+    "stability_score": 0.9554890990257263
+  },
+  {
+    "object_id": 10,
+    "area": 109329,
+    "bbox": [
+      1004,
+      122,
+      75,
+      1797
+    ],
+    "predicted_iou": 0.9639355540275574,
+    "stability_score": 0.9658920168876648
+  }
+]

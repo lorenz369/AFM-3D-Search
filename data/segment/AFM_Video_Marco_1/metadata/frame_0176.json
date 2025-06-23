@@ -1,0 +1,122 @@
+[
+  {
+    "object_id": 1,
+    "area": 472960,
+    "bbox": [
+      775,
+      110,
+      302,
+      1809
+    ],
+    "predicted_iou": 1.0270228385925293,
+    "stability_score": 0.982742428779602
+  },
+  {
+    "object_id": 2,
+    "area": 5119,
+    "bbox": [
+      835,
+      75,
+      244,
+      86
+    ],
+    "predicted_iou": 0.9639641046524048,
+    "stability_score": 0.9793276786804199
+  },
+  {
+    "object_id": 3,
+    "area": 26611,
+    "bbox": [
+      0,
+      1567,
+      377,
+      122
+    ],
+    "predicted_iou": 0.961118757724762,
+    "stability_score": 0.9798228144645691
+  },
+  {
+    "object_id": 4,
+    "area": 1774,
+    "bbox": [
+      239,
+      1862,
+      38,
+      52
+    ],
+    "predicted_iou": 0.9547946453094482,
+    "stability_score": 0.9770949482917786
+  },
+  {
+    "object_id": 5,
+    "area": 12887,
+    "bbox": [
+      0,
+      1807,
+      388,
+      104
+    ],
+    "predicted_iou": 0.9501379132270813,
+    "stability_score": 0.9635809659957886
+  },
+  {
+    "object_id": 6,
+    "area": 1208525,
+    "bbox": [
+      4,
+      201,
+      833,
+      1718
+    ],
+    "predicted_iou": 1.0337700843811035,
+    "stability_score": 0.9930456280708313
+  },
+  {
+    "object_id": 7,
+    "area": 111423,
+    "bbox": [
+      0,
+      1567,
+      390,
+      348
+    ],
+    "predicted_iou": 1.0203880071640015,
+    "stability_score": 0.9816264510154724
+  },
+  {
+    "object_id": 8,
+    "area": 230648,
+    "bbox": [
+      0,
+      0,
+      1078,
+      279
+    ],
+    "predicted_iou": 1.0173373222351074,
+    "stability_score": 0.9900178909301758
+  },
+  {
+    "object_id": 9,
+    "area": 1435774,
+    "bbox": [
+      3,
+      0,
+      1073,
+      1919
+    ],
+    "predicted_iou": 0.9854624271392822,
+    "stability_score": 0.9651422500610352
+  },
+  {
+    "object_id": 10,
+    "area": 291716,
+    "bbox": [
+      612,
+      239,
+      226,
+      1680
+    ],
+    "predicted_iou": 0.9739512801170349,
+    "stability_score": 0.9508876800537109
+  }
+]

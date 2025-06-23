@@ -1,0 +1,122 @@
+[
+  {
+    "object_id": 1,
+    "area": 15105,
+    "bbox": [
+      524,
+      1855,
+      376,
+      64
+    ],
+    "predicted_iou": 1.00088369846344,
+    "stability_score": 0.9888076782226562
+  },
+  {
+    "object_id": 2,
+    "area": 14534,
+    "bbox": [
+      0,
+      1840,
+      246,
+      79
+    ],
+    "predicted_iou": 0.9896016120910645,
+    "stability_score": 0.9871453046798706
+  },
+  {
+    "object_id": 3,
+    "area": 28304,
+    "bbox": [
+      198,
+      1761,
+      304,
+      158
+    ],
+    "predicted_iou": 0.9894303679466248,
+    "stability_score": 0.9853725433349609
+  },
+  {
+    "object_id": 4,
+    "area": 45857,
+    "bbox": [
+      198,
+      1761,
+      703,
+      158
+    ],
+    "predicted_iou": 0.985450267791748,
+    "stability_score": 0.9782224297523499
+  },
+  {
+    "object_id": 5,
+    "area": 1578,
+    "bbox": [
+      747,
+      1804,
+      35,
+      45
+    ],
+    "predicted_iou": 0.981942355632782,
+    "stability_score": 0.9893014430999756
+  },
+  {
+    "object_id": 6,
+    "area": 2683,
+    "bbox": [
+      400,
+      1886,
+      122,
+      33
+    ],
+    "predicted_iou": 0.9434918165206909,
+    "stability_score": 0.9811460375785828
+  },
+  {
+    "object_id": 7,
+    "area": 4599,
+    "bbox": [
+      872,
+      1847,
+      153,
+      72
+    ],
+    "predicted_iou": 0.9297136664390564,
+    "stability_score": 0.9507535696029663
+  },
+  {
+    "object_id": 8,
+    "area": 1476160,
+    "bbox": [
+      4,
+      217,
+      1072,
+      1702
+    ],
+    "predicted_iou": 1.0371689796447754,
+    "stability_score": 0.9907858371734619
+  },
+  {
+    "object_id": 9,
+    "area": 232672,
+    "bbox": [
+      0,
+      1532,
+      892,
+      316
+    ],
+    "predicted_iou": 1.0215439796447754,
+    "stability_score": 0.987538754940033
+  },
+  {
+    "object_id": 10,
+    "area": 250276,
+    "bbox": [
+      0,
+      0,
+      1077,
+      248
+    ],
+    "predicted_iou": 1.0177909135818481,
+    "stability_score": 0.9915894269943237
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "object_id": 1,
+    "area": 1423621,
+    "bbox": [
+      134,
+      0,
+      877,
+      1919
+    ],
+    "predicted_iou": 1.0242722034454346,
+    "stability_score": 0.9875192046165466
+  },
+  {
+    "object_id": 2,
+    "area": 10911,
+    "bbox": [
+      273,
+      403,
+      107,
+      126
+    ],
+    "predicted_iou": 0.9604248404502869,
+    "stability_score": 0.9598743319511414
+  },
+  {
+    "object_id": 3,
+    "area": 1731,
+    "bbox": [
+      1061,
+      75,
+      18,
+      155
+    ],
+    "predicted_iou": 0.9529961943626404,
+    "stability_score": 0.9783352613449097
+  },
+  {
+    "object_id": 4,
+    "area": 8185,
+    "bbox": [
+      0,
+      909,
+      46,
+      318
+    ],
+    "predicted_iou": 0.9380700588226318,
+    "stability_score": 0.9574952125549316
+  },
+  {
+    "object_id": 5,
+    "area": 5579,
+    "bbox": [
+      0,
+      909,
+      38,
+      173
+    ],
+    "predicted_iou": 0.9309501051902771,
+    "stability_score": 0.9678785800933838
+  },
+  {
+    "object_id": 6,
+    "area": 5016,
+    "bbox": [
+      549,
+      922,
+      120,
+      54
+    ],
+    "predicted_iou": 0.9129034280776978,
+    "stability_score": 0.9531310796737671
+  },
+  {
+    "object_id": 7,
+    "area": 3902,
+    "bbox": [
+      0,
+      1076,
+      33,
+      134
+    ],
+    "predicted_iou": 0.8935592174530029,
+    "stability_score": 0.9654040336608887
+  },
+  {
+    "object_id": 8,
+    "area": 290365,
+    "bbox": [
+      0,
+      0,
+      190,
+      1919
+    ],
+    "predicted_iou": 1.010176181793213,
+    "stability_score": 0.9611021280288696
+  },
+  {
+    "object_id": 9,
+    "area": 301100,
+    "bbox": [
+      823,
+      0,
+      256,
+      1919
+    ],
+    "predicted_iou": 1.0013724565505981,
+    "stability_score": 0.9523106217384338
+  },
+  {
+    "object_id": 10,
+    "area": 124753,
+    "bbox": [
+      902,
+      561,
+      177,
+      1358
+    ],
+    "predicted_iou": 0.9941914677619934,
+    "stability_score": 0.976687490940094
+  }
+]

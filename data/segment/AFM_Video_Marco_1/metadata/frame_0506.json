@@ -1,0 +1,50 @@
+[
+  {
+    "object_id": 1,
+    "area": 27909,
+    "bbox": [
+      0,
+      0,
+      83,
+      341
+    ],
+    "predicted_iou": 0.9758553504943848,
+    "stability_score": 0.9784519672393799
+  },
+  {
+    "object_id": 2,
+    "area": 22797,
+    "bbox": [
+      145,
+      0,
+      85,
+      306
+    ],
+    "predicted_iou": 0.9694526195526123,
+    "stability_score": 0.9572367072105408
+  },
+  {
+    "object_id": 3,
+    "area": 141198,
+    "bbox": [
+      0,
+      0,
+      85,
+      1919
+    ],
+    "predicted_iou": 0.9477567076683044,
+    "stability_score": 0.9507870078086853
+  },
+  {
+    "object_id": 4,
+    "area": 1958761,
+    "bbox": [
+      0,
+      0,
+      1075,
+      1919
+    ],
+    "predicted_iou": 1.0204130411148071,
+    "stability_score": 0.9501011967658997
+  }
+]

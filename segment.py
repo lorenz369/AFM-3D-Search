@@ -1,10 +1,23 @@
-from segment_anything import SamPredictor, sam_model_registry
+from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
 import cv2
 import numpy as np
 import torch
 import os
 from tqdm import tqdm
+import json
 
+
+
+# --- Setup paths ---
+frame_dir = "data/frames/AFM_Video_Marco_1"
+output_mask_dir = "data/segment/AFM_Video_Marco_1/masks/objects"
+output_label_dir = "data/segment/AFM_Video_Marco_1/masks/labels"
+output_meta_dir = "data/segment/AFM_Video_Marco_1/metadata"
+
+# Create output folders
+os.makedirs(output_mask_dir, exist_ok=True)
+os.makedirs(output_label_dir, exist_ok=True)
+os.makedirs(output_meta_dir, exist_ok=True)
 
 
 # Load the SAM model
@@ -13,24 +26,58 @@ predictor = SamPredictor(sam)
 sam.to(torch.device("cuda"))
 
 
-# Function to run SAM on a single image
-def run_sam_on_image(image_path):
-    image = cv2.imread(image_path)
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    predictor.set_image(image_rgb)
-    masks, _, _ = predictor.predict()
-    return masks, image_rgb
+# Setup SAM Mask Generator
+mask_generator = SamAutomaticMaskGenerator(
+    model=sam,
+    points_per_side=32,      # Erhöhen → mehr Details
+    pred_iou_thresh=0.88,
+    stability_score_thresh=0.95,
+    min_mask_region_area=100, # filtert Mini-Masken raus
+)
+
 
 # Liste aller Frame-Dateien
 frame_dir = "data/frames/AFM_Video_Marco_1"
 
-# Process all frames in the folder
+
+
 for i in tqdm(range(len(os.listdir(frame_dir))), desc="Segmenting frames"):
-    masks, image = run_sam_on_image(f"{frame_dir}/frame_{i:04d}.png")
-    
-    # Convert boolean mask to uint8 (0 or 255) before saving
-    mask_uint8 = (masks[0].astype(np.uint8)) * 255
-    
-    # Save the mask and the RGB image
-    cv2.imwrite(f"data/masks/AFM_Video_Marco_1/mask_{i:04d}.png", mask_uint8)
-    cv2.imwrite(f"data/images/AFM_Video_Marco_1/image_{i:04d}.png", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+    frame_index = int(f"frame_{i:04d}.png".split("_")[-1].split(".")[0])  # extract index from "frame_0000.png"
+
+    # Load and prepare image
+    image = cv2.imread(f"{frame_dir}/frame_{i:04d}.png")
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Generate masks
+    masks = mask_generator.generate(image_rgb)
+
+    # Create label map and metadata list
+    label_map = np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+    metadata = []
+
+    for j, m in enumerate(masks):
+        # Save individual binary mask
+        mask = (m["segmentation"].astype(np.uint8)) * 255
+        mask_path = os.path.join(output_mask_dir, f"mask_{frame_index:04d}_{j:02d}.png")
+        cv2.imwrite(mask_path, mask)
+
+        # Add to label map with unique ID
+        label_map[m["segmentation"]] = j + 1
+
+        # Save object metadata
+        metadata.append({
+            "object_id": j + 1,
+            "area": int(m["area"]),
+            "bbox": m["bbox"],  # [x, y, width, height]
+            "predicted_iou": float(m["predicted_iou"]),
+            "stability_score": float(m["stability_score"]),
+        })
+
+    # Save label image
+    label_path = os.path.join(output_label_dir, f"label_mask_{frame_index:04d}.png")
+    cv2.imwrite(label_path, label_map)
+
+    # Save metadata
+    meta_path = os.path.join(output_meta_dir, f"frame_{frame_index:04d}.json")
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)

@@ -1,0 +1,146 @@
+[
+  {
+    "object_id": 1,
+    "area": 1526921,
+    "bbox": [
+      4,
+      201,
+      1067,
+      1718
+    ],
+    "predicted_iou": 1.021894097328186,
+    "stability_score": 0.9907872676849365
+  },
+  {
+    "object_id": 2,
+    "area": 8346,
+    "bbox": [
+      0,
+      1838,
+      150,
+      81
+    ],
+    "predicted_iou": 1.0031956434249878,
+    "stability_score": 0.9956932663917542
+  },
+  {
+    "object_id": 3,
+    "area": 16590,
+    "bbox": [
+      0,
+      1838,
+      621,
+      81
+    ],
+    "predicted_iou": 0.9690072536468506,
+    "stability_score": 0.9705130457878113
+  },
+  {
+    "object_id": 4,
+    "area": 8470,
+    "bbox": [
+      255,
+      1882,
+      367,
+      37
+    ],
+    "predicted_iou": 0.9390915632247925,
+    "stability_score": 0.9742484092712402
+  },
+  {
+    "object_id": 5,
+    "area": 36618,
+    "bbox": [
+      0,
+      1555,
+      600,
+      110
+    ],
+    "predicted_iou": 0.9349399209022522,
+    "stability_score": 0.9507025480270386
+  },
+  {
+    "object_id": 6,
+    "area": 1660,
+    "bbox": [
+      466,
+      1841,
+      36,
+      49
+    ],
+    "predicted_iou": 0.9296799898147583,
+    "stability_score": 0.9797377586364746
+  },
+  {
+    "object_id": 7,
+    "area": 4544,
+    "bbox": [
+      137,
+      1877,
+      147,
+      42
+    ],
+    "predicted_iou": 0.9009498357772827,
+    "stability_score": 0.9580825567245483
+  },
+  {
+    "object_id": 8,
+    "area": 254032,
+    "bbox": [
+      0,
+      0,
+      1078,
+      270
+    ],
+    "predicted_iou": 1.0183510780334473,
+    "stability_score": 0.9898105263710022
+  },
+  {
+    "object_id": 9,
+    "area": 166572,
+    "bbox": [
+      0,
+      1556,
+      611,
+      332
+    ],
+    "predicted_iou": 1.0120207071304321,
+    "stability_score": 0.9849539399147034
+  },
+  {
+    "object_id": 10,
+    "area": 78500,
+    "bbox": [
+      997,
+      225,
+      82,
+      1694
+    ],
+    "predicted_iou": 0.9995595216751099,
+    "stability_score": 0.9858726859092712
+  },
+  {
+    "object_id": 11,
+    "area": 51702,
+    "bbox": [
+      999,
+      713,
+      80,
+      1206
+    ],
+    "predicted_iou": 0.9107086062431335,
+    "stability_score": 0.965524435043335
+  },
+  {
+    "object_id": 12,
+    "area": 5786,
+    "bbox": [
+      411,
+      1882,
+      211,
+      37
+    ],
+    "predicted_iou": 0.8991073966026306,
+    "stability_score": 0.9547687768936157
+  }
+]

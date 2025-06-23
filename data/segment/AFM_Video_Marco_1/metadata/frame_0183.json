@@ -1,0 +1,122 @@
+[
+  {
+    "object_id": 1,
+    "area": 33056,
+    "bbox": [
+      934,
+      162,
+      86,
+      1038
+    ],
+    "predicted_iou": 0.9762979745864868,
+    "stability_score": 0.952146053314209
+  },
+  {
+    "object_id": 2,
+    "area": 35219,
+    "bbox": [
+      0,
+      1562,
+      507,
+      121
+    ],
+    "predicted_iou": 0.9645640850067139,
+    "stability_score": 0.9695002436637878
+  },
+  {
+    "object_id": 3,
+    "area": 2788,
+    "bbox": [
+      971,
+      97,
+      108,
+      60
+    ],
+    "predicted_iou": 0.9534480571746826,
+    "stability_score": 0.969996452331543
+  },
+  {
+    "object_id": 4,
+    "area": 1682,
+    "bbox": [
+      371,
+      1851,
+      37,
+      50
+    ],
+    "predicted_iou": 0.9409424066543579,
+    "stability_score": 0.9852420091629028
+  },
+  {
+    "object_id": 5,
+    "area": 244170,
+    "bbox": [
+      904,
+      122,
+      175,
+      1797
+    ],
+    "predicted_iou": 1.032910943031311,
+    "stability_score": 0.9875709414482117
+  },
+  {
+    "object_id": 6,
+    "area": 1391431,
+    "bbox": [
+      3,
+      199,
+      970,
+      1720
+    ],
+    "predicted_iou": 1.0269150733947754,
+    "stability_score": 0.9916868805885315
+  },
+  {
+    "object_id": 7,
+    "area": 146584,
+    "bbox": [
+      0,
+      1562,
+      518,
+      352
+    ],
+    "predicted_iou": 1.0224220752716064,
+    "stability_score": 0.984114944934845
+  },
+  {
+    "object_id": 8,
+    "area": 245255,
+    "bbox": [
+      0,
+      0,
+      1078,
+      274
+    ],
+    "predicted_iou": 1.0183935165405273,
+    "stability_score": 0.9907422661781311
+  },
+  {
+    "object_id": 9,
+    "area": 306757,
+    "bbox": [
+      743,
+      226,
+      229,
+      1693
+    ],
+    "predicted_iou": 0.9787548780441284,
+    "stability_score": 0.9513112306594849
+  },
+  {
+    "object_id": 10,
+    "area": 4622,
+    "bbox": [
+      273,
+      1891,
+      248,
+      28
+    ],
+    "predicted_iou": 0.9065155982971191,
+    "stability_score": 0.953082263469696
+  }
+]
