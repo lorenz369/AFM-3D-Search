@@ -57,6 +57,11 @@ Copy stuff to server (example)
 rsync -avz -e "ssh -p 58022" /Users/marcolorenz/Library/CloudStorage/OneDrive-Personal/*.MOV s0125@atcremers45.in.tum.de:~/
 ```
 
+Sync MAST3R SLAMS output (example)
+```
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-SLAM/logs/ /Users/marcolorenz/Programming/AFM/AFM-3D-Search/MASt3R-SLAM/logs/
+```
+
 ## Useful Commands
 
 ### GPU Commands
