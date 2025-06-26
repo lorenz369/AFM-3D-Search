@@ -183,32 +183,55 @@ def visualize_slam_data(
 ):
     """Visualize complete SLAM data."""
     
+    print(f"=== Starting SLAM Visualization ===")
+    print(f"Mode: {mode}")
+    print(f"Remote host: {remote_host}")
+    print(f"Remote port: {remote_port}")
+    
     rr.init("AFM_3D_SLAM_Visualization", spawn=False)
+    print("✓ Rerun SDK initialized")
 
     if mode == "save":
+        print("📁 Using SAVE mode - will write to output.rrd")
         rr.save("output.rrd")
     elif mode == "serve":
+        print("🌐 Using SERVE mode")
         if remote_host:
+            print(f"🔗 Remote mode: connecting to gRPC at {remote_host}:{remote_port}")
             rr.serve_grpc(grpc_port=remote_port)
         else:
+            print("🖥️  Local mode: spawning Rerun viewer window")
             rr.spawn()
+    else:
+        print(f"❌ Unknown mode: {mode}")
+        
+    print("✓ Viewer setup complete")
 
     # Set up a static reference frame
+    print("🌍 Setting up world coordinate frame...")
     rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
 
     # Log the main point cloud
+    print("☁️  Loading and logging point cloud...")
     points, colors = read_ply_file(files_info['ply_path'])
+    # Log the point cloud as timeless so it is visible regardless of the active timeline
     if colors is not None:
-        rr.log("world/point_cloud", rr.Points3D(points, colors=colors))
+        print(f"✓ Logging {len(points)} points with colors (static)")
+        rr.log("world/point_cloud", rr.Points3D(points, colors=colors), static=True)
     else:
-        rr.log("world/point_cloud", rr.Points3D(points))
+        print(f"✓ Logging {len(points)} points without colors (static)")
+        rr.log("world/point_cloud", rr.Points3D(points), static=True)
 
     # Load combined camera data (indexed by frame_id)
+    print("📷 Loading camera data...")
     camera_data = read_camera_data(files_info['poses_file'], files_info['intrinsics_file'])
     sorted_frame_ids = sorted(camera_data.keys())
+    print(f"✓ Found {len(camera_data)} camera frames to process")
 
     # Log camera poses, keyframes, and depth maps over time
-    for frame_id in sorted_frame_ids:
+    print("🎬 Processing camera frames...")
+    for i, frame_id in enumerate(sorted_frame_ids):
+        print(f"  Processing frame {i+1}/{len(sorted_frame_ids)}: {frame_id}")
         cam_info = camera_data[frame_id]
         
         # Use timestamp for the timeline
@@ -231,10 +254,11 @@ def visualize_slam_data(
                     "world/camera/image", 
                     rr.Image(np.array(Image.open(keyframe_path))).compress(jpeg_quality=80)
                 )
+                print(f"    ✓ Loaded keyframe: {frame_id:06d}.png")
             except Exception as e:
-                print(f"Error loading keyframe image from {keyframe_path}: {e}")
+                print(f"    ❌ Error loading keyframe {keyframe_path}: {e}")
         else:
-            print(f"Warning: Keyframe not found at {keyframe_path}")
+            print(f"    ⚠️  Keyframe not found: {keyframe_path}")
         
         # Log depth map using frame_id (new consistent naming)
         depth_path = os.path.join(files_info['depth_dir'], f"{frame_id:06d}.npy")
@@ -245,11 +269,11 @@ def visualize_slam_data(
                     "world/camera/depth",
                     rr.DepthImage(depth_map)
                 )
-                print(f"Loaded depth map from {depth_path}, shape: {depth_map.shape}")
+                print(f"    ✓ Loaded depth map: {frame_id:06d}.npy, shape: {depth_map.shape}")
             except Exception as e:
-                print(f"Error loading depth map from {depth_path}: {e}")
+                print(f"    ❌ Error loading depth map {depth_path}: {e}")
         else:
-            print(f"Warning: Depth map not found at {depth_path}")
+            print(f"    ⚠️  Depth map not found: {depth_path}")
 
         # Log camera intrinsics
         rr.log(
@@ -260,9 +284,11 @@ def visualize_slam_data(
             )
         )
 
-    print("Visualization data logged to Rerun.")
+    print("🎉 Visualization data logged to Rerun successfully!")
     if remote_host:
-        print(f"Streaming to {remote_host}:{remote_port}. Open the Rerun viewer and connect.")
+        print(f"🌐 Streaming to {remote_host}:{remote_port}. Open the Rerun viewer and connect.")
+    else:
+        print("🖥️  Check the Rerun viewer window that should have opened.")
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize MASt3R SLAM results with Rerun")
