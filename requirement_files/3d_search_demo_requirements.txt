@@ -1,0 +1,72 @@
+# Complete requirements for MASt3R pointcloud preprocessing, visualization, and 3D search
+# Use this with UV to create a single environment for the entire pipeline
+
+# ===== CORE ML FRAMEWORKS =====
+# PyTorch ecosystem (matching MASt3R environment)
+--index-url https://download.pytorch.org/whl/cu121
+torch>=2.3.0
+torchvision>=0.18.0
+
+# Core array operations 
+numpy>=1.21.0
+
+# ===== COMPUTER VISION & IMAGE PROCESSING =====
+# Image processing
+pillow>=9.0.0
+opencv-python>=4.5.0
+
+# Segmentation model
+git+https://github.com/facebookresearch/segment-anything.git
+
+# CLIP model
+git+https://github.com/openai/CLIP.git
+
+# ===== 3D PROCESSING =====
+# 3D point cloud processing
+open3d>=0.15.0
+
+# PyTorch Geometric for 3D operations
+torch-geometric>=2.3.0
+
+# Scientific computing
+scipy>=1.9.0
+
+# ===== CONFIGURATION & HYDRA =====
+# Configuration management (needed for Locate3D and preprocessing)
+hydra-core>=1.3.0
+omegaconf>=2.3.0
+
+# ===== NLP & TRANSFORMERS =====
+# HuggingFace transformers (matching MASt3R environment)
+transformers>=4.21.0
+
+# Tokenizers for text processing
+tokenizers>=0.13.0
+
+# ===== 3D VISUALIZATION =====
+# Interactive 3D visualization
+plotly>=5.10.0
+
+# ===== LOCATE3D MODEL DEPENDENCIES =====
+# HuggingFace Hub for model downloading
+huggingface-hub>=0.15.0
+
+# ===== UTILITIES =====
+# Progress bars
+tqdm>=4.64.0
+
+# Terminal output formatting
+colorama>=0.4.4
+
+# File handling and utilities
+wget>=3.2
+
+# ===== OPTIONAL JUPYTER SUPPORT =====
+# Jupyter support (optional)
+ipywidgets>=7.6.0
+jupyter>=1.0.0
+
+# ===== DEVELOPMENT TOOLS (OPTIONAL) =====
+# Code formatting and linting (optional)
+# black>=22.0.0
+# flake8>=5.0.0 

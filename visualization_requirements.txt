@@ -1,5 +1,0 @@
-rerun-sdk==0.23.3
-numpy==2.3.0
-plyfile==1.1.2
-pillow==11.0.0
-scipy==1.15.3 
