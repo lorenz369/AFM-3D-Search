@@ -64,13 +64,19 @@ def load_featurized_pointcloud(pt_path):
         features_info = {}
         if 'features_clip' in data:
             features_clip = data['features_clip'].numpy() if isinstance(data['features_clip'], torch.Tensor) else data['features_clip']
-            features_info['clip'] = features_clip
-            print(f"  CLIP features: {features_clip.shape}")
+            if features_clip is not None:
+                features_info['clip'] = features_clip
+                print(f"  CLIP features: {features_clip.shape}")
+            else:
+                print("  CLIP features: None")
         
         if 'features_dino' in data:
             features_dino = data['features_dino'].numpy() if isinstance(data['features_dino'], torch.Tensor) else data['features_dino']
-            features_info['dino'] = features_dino
-            print(f"  DINO features: {features_dino.shape}")
+            if features_dino is not None:
+                features_info['dino'] = features_dino
+                print(f"  DINO features: {features_dino.shape}")
+            else:
+                print("  DINO features: None")
         
         print(f"Loaded pointcloud: {points.shape[0]} points, RGB shape: {rgb.shape}")
         
@@ -143,7 +149,7 @@ def visualize_featurized_pointcloud(
     file_key='combined',
     mode="serve",
     remote_host=None, 
-    remote_port=9876,
+    remote_port=9877,
     show_features=True,
     feature_type='both',
     pca_method='hsv'
@@ -175,6 +181,9 @@ def visualize_featurized_pointcloud(
         else:
             print("🖥️  Local mode: spawning Rerun viewer window")
             rr.spawn()
+    elif mode == "web":
+        print("🌐 Using WEB mode - serving on localhost:9090")
+        rr.serve_web(open_browser=True, web_port=9090)
     else:
         print(f"❌ Unknown mode: {mode}")
         
@@ -244,9 +253,9 @@ def main():
                        default="combined",
                        help="Which .pt file to visualize")
     parser.add_argument("--mode",
-                       choices=["serve", "save"],
+                       choices=["serve", "save", "web"],
                        default="serve",
-                       help="Set the visualization mode: 'serve' to stream, 'save' to file.")
+                       help="Set the visualization mode: 'serve' to stream, 'save' to file, 'web' to serve on localhost:9090")
     parser.add_argument("--remote-host",
                        help="Remote host IP for Rerun streaming")
     parser.add_argument("--remote-port", type=int, default=9876)
