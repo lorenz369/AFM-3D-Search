@@ -22,11 +22,10 @@ packages=(
     "libavcodec-dev"
     "libavformat-dev"
     "libswscale-dev"
-    "libavresample-dev"
+    "libswresample-dev"
     "libgstreamer1.0-dev"
     "libgstreamer-plugins-base1.0-dev"
     "libgtk-3-dev"
-    "libqt6-dev"
     "qt6-base-dev"
     "libssl-dev"
     "libcurl4-openssl-dev"
@@ -38,7 +37,7 @@ packages=(
     "libffi-dev"
     "libsqlite3-dev"
     "libedit-dev"
-    "libncurses5-dev"
+    "libncurses-dev"
     "libreadline-dev"
     "tk-dev"
     "libgdbm-dev"
@@ -47,7 +46,6 @@ packages=(
     "xz-utils"
     "curl"
     "llvm"
-    "libncursesw5-dev"
     "libgdbm-compat-dev"
     "libc6-dev"
     "openssl"
@@ -60,7 +58,8 @@ echo "Checking $(echo ${packages[@]} | wc -w) packages..."
 echo ""
 
 for package in "${packages[@]}"; do
-    if dpkg -l | grep -q "^ii  $package "; then
+    # Use dpkg-query for more reliable checking
+    if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"; then
         echo "✓ $package (installed)"
         installed+=("$package")
     else
