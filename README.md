@@ -54,12 +54,17 @@ Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub
 
 Copy stuff to server (example)
 ```bash
-rsync -avz -e "ssh -p 58022" /Users/marcolorenz/Library/CloudStorage/OneDrive-Personal/*.MOV s0125@atcremers45.in.tum.de:~/
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/ s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/
 ```
 
 Sync MAST3R SLAMS output (example)
 ```
-rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-SLAM/logs/ /Users/marcolorenz/Programming/AFM/AFM-3D-Search/MASt3R-SLAM/logs/
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-SLAM/logs/ /home/marco/Marco/AFM-3D-Search/MASt3R-SLAM/logs/
+```
+
+Sync locate-3d preprocessing output (example)
+```
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/ /home/marco/Marco/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/
 ```
 
 ## Useful Commands
@@ -167,53 +172,66 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 
 ## Visualization of Point Clouds
 
-Interactive 3D visualization of PLY point clouds using Rerun SDK, with support for synchronized keyframe images.
+Interactive 3D visualization of MASt3R-SLAM results including PLY point clouds, camera trajectory, keyframes, and depth maps using Rerun SDK.
 
 ### Environment Setup
 
 #### Using uv
 ```bash
 # Create and activate the virtual environment
-uv venv .rerun_env
+uv venv .rerun_env --python 3.11
 source .rerun_env/bin/activate
 
 # Install required packages
-uv pip install rerun-sdk plyfile pillow
+uv pip install -r visualization_requirements.txt
 ```
 
 ### Usage
 
-The visualization script supports PLY point clouds with optional keyframe images:
+The visualization script automatically discovers and loads all SLAM results from a directory:
 
 ```bash
-# Basic usage with default paths
-python visualize_pointcloud.py
+# Local visualization (opens Rerun viewer locally)
+python visualize_pointcloud.py <path/to/slam/results/directory>
 
-# Visualize only the pointcloud (skip keyframes)
-python visualize_pointcloud.py --no-keyframes
-
-# Specify custom paths
-python visualize_pointcloud.py --ply path/to/your.ply --keyframes path/to/keyframes/
+# Example:
+python visualize_pointcloud.py logs/depth_video2_5_sec_test
 ```
 
 ### Script Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--ply` | Path to PLY pointcloud file | `data/mast3r_results/AFM_Video_Marco_1.ply` |
-| `--keyframes` | Path to keyframes directory | `data/mast3r_results/keyframes/AFM_Video_Marco_1` |
-| `--no-keyframes` | Skip loading keyframe images | False |
+| `slam_dir` | Path to SLAM results directory (positional argument) | Required |
+| `--mode` | Visualization mode: 'serve' or 'save' | `serve` |
+| `--remote-host` | Remote host IP for streaming | None (local) |
+| `--remote-port` | Remote port for streaming | `9876` |
+
+#### Additional Usage Examples
+
+```bash
+# Stream to remote Rerun viewer
+python visualize_pointcloud.py <slam_dir> --remote-host <remote_ip> --remote-port 9876
+
+# Save visualization data to file
+python visualize_pointcloud.py <slam_dir> --mode save
+```
 
 #### Features
 
+- **Automatic file discovery** from SLAM output directory
 - **Interactive 3D visualization** of point clouds with colors
+- **Camera trajectory** visualization over time
 - **Timeline scrubbing** through keyframe images
-- **Synchronized display** of 3D reconstruction and original camera views
-- **Automatic color normalization** for PLY files
-- **Error handling** for missing files or corrupted images
+- **Synchronized depth maps** with keyframes
+- **Remote streaming** support for visualization
+- **Timeline-based navigation** using timestamps
 
-#### Requirements
+#### Auto-discovered Files
 
-- PLY files with vertex coordinates (x, y, z)
-- Optional: RGB color data (red, green, blue fields)
-- Optional: Keyframe images in PNG format with timestamp filenames
+The script automatically finds and loads:
+- PLY pointcloud file
+- Camera poses and timestamps
+- Camera intrinsics
+- Keyframe images (PNG format)
+- Depth maps (NPY format)
