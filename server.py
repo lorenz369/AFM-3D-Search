@@ -2,7 +2,6 @@ import os
 import subprocess
 import threading
 import uuid
-import time
 from pathlib import Path
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
@@ -10,22 +9,21 @@ from werkzeug.utils import secure_filename
 # --- Configuration ---
 TEMP_UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'zip'}
+DEPTH_PRO_DIR = Path(__file__).parent / 'ml-depth-pro'
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = TEMP_UPLOAD_FOLDER
-
 os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
 
 # --- Helper Functions ---
 def allowed_file(filename):
     """Checks if the uploaded file has an allowed extension."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def process_data_in_background(filepath, original_filename):
     """
-    This function unzips the file and saves it to a folder on the remote server.
+    This function unzips the file and then runs the depth estimation process.
     """
     print(f"--- [Background Thread] Starting processing for {original_filename} ---")
     try:
@@ -33,7 +31,7 @@ def process_data_in_background(filepath, original_filename):
         os.makedirs(output_parent_folder, exist_ok=True)
 
         print(f"Unzipping {original_filename} into: {output_parent_folder}")
-        subprocess.run(["unzip", "-o", filepath, "-d", str(output_parent_folder)], check=True)
+        subprocess.run(["unzip", "-o", filepath, "-d", str(output_parent_folder)], check=True, capture_output=True, text=True)
 
         base_name = original_filename.rsplit('.', 1)[0]
         extracted_folder_path = output_parent_folder / base_name
@@ -41,7 +39,6 @@ def process_data_in_background(filepath, original_filename):
         unique_folder_name = f"{base_name}_processed"
         final_destination_path = output_parent_folder / unique_folder_name
         
-        # If a folder with this name already exists, add a counter to make it unique.
         counter = 1
         while final_destination_path.exists():
             unique_folder_name = f"{base_name}_processed_{counter}"
@@ -51,17 +48,41 @@ def process_data_in_background(filepath, original_filename):
         if extracted_folder_path.exists():
             os.rename(extracted_folder_path, final_destination_path)
             print(f"--- ✅ [Background Thread] Success! Final folder: {final_destination_path} ---")
+
+            color_folder = final_destination_path / "color"
+            depth_output_folder = final_destination_path / "depth"
+            
+            if color_folder.is_dir():
+                print(f"--- 🏃 [Background Thread] Running Depth Estimation on {color_folder} ---")
+                
+                cmd = [
+                    "conda", "run", "-n", "depth-pro",
+                    "depth-pro-run",
+                    "-i", str(color_folder),
+                    "-o", str(depth_output_folder),
+                    "--skip-display" 
+                ]
+                
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                print(result.stdout) 
+                
+                print(f"--- ✅ [Background Thread] Depth Estimation complete. Output in: {depth_output_folder} ---")
+            else:
+                print(f"--- ❌ [Background Thread] Error: 'color' folder not found in {final_destination_path}. ---")
+
         else:
-            print(f"--- ❌ [Background Thread] Error: Expected folder '{extracted_folder_path}' not found. ---")
+            print(f"--- ❌ [Background Thread] Error: Expected folder '{extracted_folder_path}' not found after unzip. ---")
 
     except subprocess.CalledProcessError as e:
-        print(f"--- ❌ [Background Thread] An error occurred during unzip: {e} ---")
+        print(f"--- ❌ [Background Thread] An error occurred during processing: ---")
+        print(f"STDOUT: {e.stdout}")
+        print(f"STDERR: {e.stderr}")
     except Exception as e:
         print(f"--- ❌ [Background Thread] A critical error occurred: {e} ---")
     finally:
         print(f"--- [Background Thread] Cleaning up temporary file: {filepath} ---")
-        os.remove(filepath)
-
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
 # --- API Endpoint ---
 @app.route('/process-scene', methods=['POST'])
