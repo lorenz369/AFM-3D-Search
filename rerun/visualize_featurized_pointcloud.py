@@ -14,10 +14,20 @@ import os
 import glob
 import time
 import threading
+import sys
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from matplotlib.colors import hsv_to_rgb
+
+# Add the path to locate-3d for importing ClipEncoder
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'locate-3d'))
+try:
+    from preprocessing.image_features.clip_encoder import ClipEncoder
+    HAS_CLIP_ENCODER = True
+except ImportError:
+    HAS_CLIP_ENCODER = False
+    print("Warning: ClipEncoder not available. Text-based similarity highlighting will be disabled.")
 
 # Try importing surface reconstruction libraries
 try:
@@ -487,6 +497,112 @@ def create_voxel_highlights(points, colors, voxel_size=0.1, highlight_ratio=0.1)
     
     return highlighted_points, highlight_colors, voxel_centers
 
+def create_text_similarity_highlights(points, clip_features, text_query, 
+                                    clip_encoder=None, top_k=100, 
+                                    similarity_threshold=0.3,
+                                    highlight_color=[1.0, 0.8, 0.0]):
+    """
+    Create highlights based on semantic similarity between text query and CLIP features.
+    
+    Args:
+        points: numpy array [N, 3] - 3D points
+        clip_features: numpy array [N, D] - CLIP features for each point
+        text_query: str - text query to search for
+        clip_encoder: ClipEncoder instance
+        top_k: int - number of most similar points to highlight
+        similarity_threshold: float - minimum cosine similarity threshold
+        highlight_color: list - RGB color for highlights
+    
+    Returns:
+        highlight_indices, highlight_points, highlight_colors, similarities
+    """
+    
+    if not HAS_CLIP_ENCODER or clip_encoder is None:
+        print("⚠️  CLIP encoder not available for text similarity highlighting")
+        return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([])
+    
+    if clip_features is None or len(clip_features) == 0:
+        print("⚠️  No CLIP features available for text similarity highlighting")
+        return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([])
+    
+    print(f"🔍 Computing text similarity for query: '{text_query}'")
+    print(f"📊 CLIP features shape: {clip_features.shape}")
+    
+    # Encode the text query
+    try:
+        text_features = clip_encoder.encode_text(text_query)
+        text_features = text_features.cpu().numpy()
+        
+        # Normalize text features
+        text_features = text_features / np.linalg.norm(text_features, axis=1, keepdims=True)
+        print(f"✓ Text encoded to {text_features.shape}")
+        
+    except Exception as e:
+        print(f"❌ Error encoding text query: {e}")
+        return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([])
+    
+    # Check dimension compatibility
+    clip_feature_dim = clip_features.shape[1]
+    text_feature_dim = text_features.shape[1]
+    
+    if clip_feature_dim != text_feature_dim:
+        print(f"❌ Dimension mismatch: CLIP features ({clip_feature_dim}D) vs Text features ({text_feature_dim}D)")
+        print(f"   Point cloud likely created with different CLIP model")
+        print(f"   Expected: ViT-L/14 for 768D or ViT-B/32 for 512D")
+        return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([])
+    
+    # Normalize CLIP features for cosine similarity
+    # Handle potential zero vectors
+    norms = np.linalg.norm(clip_features, axis=1, keepdims=True)
+    zero_mask = norms[:, 0] == 0
+    if np.any(zero_mask):
+        print(f"⚠️  Found {np.sum(zero_mask)} zero feature vectors, setting to small values")
+        norms[zero_mask] = 1e-8
+    
+    clip_features_norm = clip_features / norms
+    
+    # Compute cosine similarities
+    similarities = np.dot(clip_features_norm, text_features.T).flatten()
+    
+    print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
+    
+    # Filter by similarity threshold
+    above_threshold = similarities >= similarity_threshold
+    valid_indices = np.where(above_threshold)[0]
+    
+    if len(valid_indices) == 0:
+        print(f"⚠️  No points above similarity threshold {similarity_threshold}")
+        print(f"   Try lowering threshold or using different query")
+        return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), similarities
+    
+    # Get top-k most similar points among those above threshold
+    valid_similarities = similarities[valid_indices]
+    if len(valid_indices) > top_k:
+        # Sort by similarity and take top-k
+        sorted_idx = np.argsort(valid_similarities)[::-1]
+        top_valid_indices = valid_indices[sorted_idx[:top_k]]
+    else:
+        top_valid_indices = valid_indices
+    
+    highlight_indices = top_valid_indices
+    highlight_points = points[highlight_indices]
+    
+    # Create highlight colors with intensity based on similarity
+    highlight_similarities = similarities[highlight_indices]
+    num_highlights = len(highlight_indices)
+    
+    # Create gradient colors based on similarity strength
+    highlight_colors = np.zeros((num_highlights, 3))
+    for i, sim in enumerate(highlight_similarities):
+        # Scale similarity to color intensity (0.5 to 1.0 for visibility)
+        intensity = 0.5 + 0.5 * (sim - similarity_threshold) / (similarities.max() - similarity_threshold)
+        highlight_colors[i] = [c * intensity for c in highlight_color]
+    
+    print(f"✨ Highlighted {len(highlight_indices)} points with similarity > {similarity_threshold}")
+    print(f"🎯 Top similarity: {highlight_similarities.max():.3f}")
+    
+    return highlight_indices, highlight_points, highlight_colors, similarities
+
 def visualize_featurized_pointcloud(
     files_info,
     file_key='combined',
@@ -504,9 +620,13 @@ def visualize_featurized_pointcloud(
     enable_highlights=False,
     highlight_mode='random_points',
     animate_highlights_flag=False,
-    animation_duration=30.0
+    animation_duration=30.0,
+    text_query=None,
+    text_similarity_top_k=100,
+    text_similarity_threshold=0.3,
+    clip_model_version="ViT-B/32"
 ):
-    """Visualize featurized pointcloud data with enhanced interpolation and highlighting options."""
+    """Visualize featurized pointcloud data with enhanced interpolation, highlighting, and text-based similarity search options."""
     
     print(f"=== Starting Enhanced Featurized Pointcloud Visualization ===")
     print(f"Mode: {mode}")
@@ -521,10 +641,54 @@ def visualize_featurized_pointcloud(
     print(f"Enable highlights: {enable_highlights}")
     print(f"Highlight mode: {highlight_mode}")
     print(f"Animate highlights: {animate_highlights_flag}")
+    if text_query:
+        print(f"Text query: '{text_query}'")
+        print(f"Text similarity top-k: {text_similarity_top_k}")
+        print(f"Text similarity threshold: {text_similarity_threshold}")
+        print(f"CLIP model: {clip_model_version}")
     
     if file_key not in files_info:
         print(f"Error: File key '{file_key}' not found. Available: {list(files_info.keys())}")
         return
+    
+    # Initialize CLIP encoder if text query is provided
+    clip_encoder = None
+    if text_query and HAS_CLIP_ENCODER:
+        # Load pointcloud first to determine correct CLIP model
+        try:
+            print("🔍 Checking point cloud feature dimensions...")
+            temp_points, temp_rgb, temp_features_info = load_featurized_pointcloud(files_info[file_key])
+            
+            # Auto-detect CLIP model version based on feature dimensions
+            if 'clip' in temp_features_info:
+                feature_dim = temp_features_info['clip'].shape[1]
+                if feature_dim == 512:
+                    detected_clip_version = "ViT-B/32"
+                elif feature_dim == 768:
+                    detected_clip_version = "ViT-L/14"
+                else:
+                    print(f"⚠️  Unknown CLIP feature dimension: {feature_dim}, defaulting to {clip_model_version}")
+                    detected_clip_version = clip_model_version
+                
+                if detected_clip_version != clip_model_version:
+                    print(f"🔄 Auto-detected CLIP model: {detected_clip_version} (feature dim: {feature_dim})")
+                    print(f"   Overriding specified model: {clip_model_version}")
+                    clip_model_version = detected_clip_version
+                else:
+                    print(f"✓ CLIP model {clip_model_version} matches feature dimension: {feature_dim}")
+            
+        except Exception as e:
+            print(f"⚠️  Could not auto-detect CLIP model: {e}")
+        
+        try:
+            print(f"🤖 Initializing CLIP encoder ({clip_model_version})...")
+            clip_encoder = ClipEncoder(version=clip_model_version)
+            print(f"✓ CLIP encoder ready on device: {clip_encoder.device}")
+        except Exception as e:
+            print(f"❌ Failed to initialize CLIP encoder: {e}")
+            clip_encoder = None
+    elif text_query and not HAS_CLIP_ENCODER:
+        print("⚠️  Text query provided but CLIP encoder not available")
     
     rr.init("Enhanced_Featurized_Pointcloud", spawn=False)
     print("✓ Rerun SDK initialized")
@@ -655,7 +819,35 @@ def visualize_featurized_pointcloud(
     if enable_highlights:
         print("🎯 Adding highlighting features...")
         
-        if highlight_mode == 'voxel_highlights':
+        # Text-based similarity highlighting
+        if text_query and clip_encoder and 'clip' in features_info:
+            print("🔍 Creating text-based similarity highlights...")
+            highlight_indices, highlight_points, highlight_colors, similarities = create_text_similarity_highlights(
+                points, features_info['clip'], text_query,
+                clip_encoder=clip_encoder,
+                top_k=text_similarity_top_k,
+                similarity_threshold=text_similarity_threshold,
+                highlight_color=[1.0, 0.8, 0.0]  # Golden yellow for text similarity
+            )
+            
+            if len(highlight_points) > 0:
+                # Log text similarity highlights with larger size
+                rr.log("world/text_similarity_highlights", 
+                       rr.Points3D(highlight_points, 
+                                 colors=highlight_colors, 
+                                 radii=0.03))
+                
+                # Log similarity statistics
+                rr.log("text_search/query", rr.TextLog(f"Query: '{text_query}'"))
+                rr.log("text_search/num_matches", rr.Scalar(len(highlight_points)))
+                rr.log("text_search/top_similarity", rr.Scalar(float(similarities.max())))
+                rr.log("text_search/mean_similarity", rr.Scalar(float(similarities.mean())))
+                
+                print(f"✨ Text similarity highlights: {len(highlight_points)} points found")
+            else:
+                print("⚠️  No points found matching the text query")
+        
+        elif highlight_mode == 'voxel_highlights':
             # Voxel-based highlighting
             highlighted_points, highlight_colors, voxel_centers = create_voxel_highlights(
                 points, rgb, voxel_size=0.1, highlight_ratio=0.1
@@ -719,7 +911,10 @@ def visualize_featurized_pointcloud(
             if create_mesh:
                 print("  - world/mesh_dino_features: DINO features mesh")
     if enable_highlights:
-        if highlight_mode == 'voxel_highlights':
+        if text_query and clip_encoder:
+            print("  - world/text_similarity_highlights: Text-based semantic similarity highlights")
+            print("  - text_search/*: Text search statistics and info")
+        elif highlight_mode == 'voxel_highlights':
             print("  - world/voxel_highlights: Highlighted voxel points")
             print("  - world/voxel_centers: Voxel center markers")
         else:
@@ -739,6 +934,10 @@ def visualize_featurized_pointcloud(
         else:
             print(f"\nVisualization server is running locally on port {remote_port}.")
             print(f"Connect with: rerun --connect rerun+http://127.0.0.1:{remote_port}/proxy")
+        
+        if text_query:
+            print(f"\n🔍 Text-based semantic search for: '{text_query}'")
+            print("💡 Golden/yellow highlights show points most similar to your query!")
         
         if animate_highlights_flag:
             print(f"\n🎬 Dynamic highlighting will run for {animation_duration} seconds.")
@@ -799,6 +998,18 @@ def main():
     parser.add_argument("--animation-duration", type=float, default=30.0,
                        help="Duration of highlight animation in seconds")
     
+    # Text-based similarity options
+    parser.add_argument("--text-query",
+                       help="Text query for text-based similarity highlighting")
+    parser.add_argument("--text-similarity-top-k", type=int, default=100,
+                       help="Number of top similar points to highlight")
+    parser.add_argument("--text-similarity-threshold", type=float, default=0.3,
+                       help="Minimum cosine similarity threshold for text-based similarity")
+    parser.add_argument("--clip-model-version",
+                       choices=["ViT-B/32", "ViT-L/14"],
+                       default="ViT-B/32",
+                       help="CLIP model version for text-based similarity")
+    
     args = parser.parse_args()
 
     # Auto-discover featurized pointcloud files
@@ -825,7 +1036,11 @@ def main():
         enable_highlights=args.enable_highlights,
         highlight_mode=args.highlight_mode,
         animate_highlights_flag=args.animate_highlights,
-        animation_duration=args.animation_duration
+        animation_duration=args.animation_duration,
+        text_query=args.text_query,
+        text_similarity_top_k=args.text_similarity_top_k,
+        text_similarity_threshold=args.text_similarity_threshold,
+        clip_model_version=args.clip_model_version
     )
 
 if __name__ == "__main__":
