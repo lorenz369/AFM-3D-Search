@@ -19,6 +19,12 @@ Large datasets and results are available in our [Google Drive folder](https://dr
   - [Environment Setup](#environment-setup-1)
   - [Usage](#usage)
   - [Script Options](#script-options)
+- [Locate-3D Preprocessing Environment Setup](#locate-3d-preprocessing-environment-setup)
+  - [Prerequisites](#prerequisites)
+  - [Environment Creation and Setup](#environment-creation-and-setup)
+  - [Usage](#usage-1)
+  - [Output Files](#output-files)
+  - [Troubleshooting](#troubleshooting)
 
 ## Setup
 
@@ -183,7 +189,7 @@ uv venv .rerun_env --python 3.11
 source .rerun_env/bin/activate
 
 # Install required packages
-uv pip install -r visualization_requirements.txt
+uv pip install -r environments/mast3r_slam_visualization_requirements.txt
 ```
 
 ### Usage
@@ -235,3 +241,116 @@ The script automatically finds and loads:
 - Camera intrinsics
 - Keyframe images (PNG format)
 - Depth maps (NPY format)
+
+## Locate-3D Preprocessing Environment Setup
+
+Complete setup guide for the locate-3d preprocessing environment, including system dependencies, Python environment creation, and package installation.
+
+### Prerequisites
+
+First, check that all system-level dependencies are installed:
+
+```bash
+# Navigate to environments directory
+cd environments
+
+# Check system dependencies
+./l3d-check-system-deps.sh
+```
+
+If missing packages are reported, install them:
+```bash
+sudo apt update && sudo apt install -y \
+    build-essential cmake pkg-config ffmpeg libopencv-dev libhdf5-dev \
+    libjpeg-dev libpng-dev libtiff-dev libwebp-dev libopenjp2-7-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libswresample-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev \
+    qt6-base-dev libssl-dev libcurl4-openssl-dev zlib1g-dev libbz2-dev \
+    liblzma-dev libxml2-dev libxslt1-dev libffi-dev libsqlite3-dev \
+    libedit-dev libncurses-dev libreadline-dev tk-dev libgdbm-dev \
+    libdb-dev libpcap-dev xz-utils curl llvm libgdbm-compat-dev libc6-dev
+```
+
+### Environment Creation and Setup
+
+#### Step 1: Create Virtual Environment
+```bash
+# Create Python 3.11 environment for locate-3d preprocessing
+uv venv .l3d_preprocessing --python 3.11
+source .l3d_preprocessing/bin/activate
+```
+
+#### Step 2: Install PyTorch First
+Install PyTorch with CUDA support before other packages to avoid build issues:
+```bash
+# For CUDA 12.x (adjust version as needed)
+uv pip install torch>=2.7.0 torchvision>=0.22.0
+```
+
+#### Step 3: Install Core Requirements
+```bash
+# Install the main requirements (with PyTorch geometric packages commented out)
+uv pip install -r environments/l3d_preprocessing.txt
+```
+
+#### Step 4: Install PyTorch Geometric
+Install PyTorch Geometric packages separately with the correct CUDA version:
+```bash
+# Check your PyTorch version first
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}')"
+
+# Install PyTorch Geometric (adjust CUDA version to match your setup)
+# For PyTorch 2.7.x with CUDA 12.6:
+uv pip install torch-geometric torch-cluster torch-scatter torch-sparse torch-spline-conv \
+    --find-links https://data.pyg.org/whl/torch-2.7.0+cu126.html
+
+# For other versions, check: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
+```
+
+### Usage
+
+#### Processing MASt3R-SLAM Output
+```bash
+# Navigate to preprocessing directory
+cd locate-3d/preprocessing
+
+# Process MASt3R-SLAM data with both CLIP and DINO features
+python mast3r_slam_wrapper.py \
+    --mast3r_data_dir ../../MASt3R-SLAM/logs/your_scene \
+    --poses_file ../../MASt3R-SLAM/logs/your_scene/scene_with_intrinsics.txt \
+    --output_dir output_pointclouds \
+    --scene_name your_scene_name \
+    --config_type both
+```
+
+#### Available Feature Types
+- `--config_type clip`: Extract only CLIP features
+- `--config_type dino`: Extract only DINO features  
+- `--config_type both`: Extract both CLIP and DINO features (recommended)
+
+### Output Files
+
+The preprocessing generates featurized point clouds:
+- `scene_name_clip.pt`: Point cloud with CLIP features
+- `scene_name_dino.pt`: Point cloud with DINO features
+- `scene_name_combined.pt`: Point cloud with both feature types
+
+### Troubleshooting
+
+#### Common Issues
+
+**PyTorch Geometric Build Failures:**
+- Solution: Install PyTorch first, then install geometric packages separately with `--find-links`
+
+**CUDA Version Mismatch:**
+- Check your CUDA version: `nvidia-smi`
+- Use matching PyTorch CUDA version in installation commands
+- The requirements use `>=12.6.0` for CUDA packages to support CUDA 12.6+
+
+**Missing System Dependencies:**
+- Run `./l3d-check-system-deps.sh` to identify missing packages
+- Install missing packages with the provided `apt install` command
+
+**Memory Issues:**
+- Use `--max_frames` parameter to limit processing for testing
+- Check available RAM: `free -h`
