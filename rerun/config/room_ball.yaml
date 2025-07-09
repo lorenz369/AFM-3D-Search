@@ -23,13 +23,14 @@ rendering:
   create_mesh: true
   mesh_method: "ball_pivoting"  # poisson, ball_pivoting, alpha_shape
   use_voxels: false
+  alpha_value: 0.02  # smaller values = denser mesh (only used for alpha_shape)
   voxel_size: 0.05
 
 # Feature visualization settings
 features:
   show_features: true
   feature_type: "both"  # clip, dino, both
-  pca_method: "hsv"     # rgb, hsv
+  pca_method: "rgb"     # rgb, hsv
 
 # Highlighting settings
 highlighting:

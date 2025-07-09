@@ -6,22 +6,23 @@ defaults:
   - _self_
 
 # Required parameter - user must provide this
-pointcloud_dir: ???
+pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/ARKitScenes_fpt
 
 # Optimized for text search
-file_type: "clip"  # Use CLIP features specifically
+file_type: "42447230"
 
 # Server settings
 mode: "serve"
 server:
   port: 9878
 
-# Rendering optimized for highlighting
+# Rendering settings
 rendering:
-  point_size: 0.012  # Slightly larger for better visibility
-  create_mesh: false
-  mesh_method: "poisson"
+  point_size: 0.01
+  create_mesh: true
+  mesh_method: "ball_pivoting"  # poisson, ball_pivoting, alpha_shape
   use_voxels: false
+  alpha_value: 0.02  # smaller values = denser mesh (only used for alpha_shape)
   voxel_size: 0.05
 
 # Feature settings - focus on CLIP only for text search
@@ -40,6 +41,6 @@ highlighting:
 # Text similarity settings with good defaults
 text_similarity:
   query: "chair"  # Example query - override via CLI
-  top_k: 200
-  threshold: 0.25  # Balanced threshold
-  clip_model_version: "ViT-B/32" 
+  top_k: 200  # Show more results
+  threshold: 0.2  # Lower threshold for more matches (was 0.25)
+  clip_model_version: "ViT-B/32"  # Will be auto-detected based on features 

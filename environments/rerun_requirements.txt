@@ -22,3 +22,6 @@ omegaconf>=2.3.0
 
 # Surface reconstruction and mesh generation
 open3d>=0.17.0
+
+# File system monitoring
+watchdog>=6.0.0

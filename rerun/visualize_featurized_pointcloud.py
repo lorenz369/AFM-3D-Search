@@ -885,16 +885,54 @@ def visualize_featurized_pointcloud(
                 highlight_modes=['random_points', 'spatial_clusters', 'tight_clusters', 'feature_based']
             )
 
-    # Log some basic statistics
+    # Log comprehensive statistics with better structure
     print("📊 Logging pointcloud statistics...")
-    rr.log("stats/num_points", rr.Scalar(len(points)), static=True)
-    rr.log("stats/bbox_min", rr.Scalar(points.min(axis=0)), static=True)
-    rr.log("stats/bbox_max", rr.Scalar(points.max(axis=0)), static=True)
     
+    # Basic point cloud info
+    bbox_min = points.min(axis=0)
+    bbox_max = points.max(axis=0)
+    bbox_size = bbox_max - bbox_min
+    
+    # Log individual scalar values properly
+    rr.log("stats/num_points", rr.Scalar(len(points)), static=True)
+    rr.log("stats/bbox_size_x", rr.Scalar(float(bbox_size[0])), static=True)
+    rr.log("stats/bbox_size_y", rr.Scalar(float(bbox_size[1])), static=True)
+    rr.log("stats/bbox_size_z", rr.Scalar(float(bbox_size[2])), static=True)
+    rr.log("stats/bbox_volume", rr.Scalar(float(np.prod(bbox_size))), static=True)
+    
+    # Summary text log with all key information
+    summary_text = f"""📊 POINTCLOUD SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔢 Points: {len(points):,}
+📦 Bounding Box:
+   • Min: [{bbox_min[0]:.3f}, {bbox_min[1]:.3f}, {bbox_min[2]:.3f}]
+   • Max: [{bbox_max[0]:.3f}, {bbox_max[1]:.3f}, {bbox_max[2]:.3f}]
+   • Size: [{bbox_size[0]:.3f}, {bbox_size[1]:.3f}, {bbox_size[2]:.3f}]
+   • Volume: {np.prod(bbox_size):.3f} cubic units
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+    
+    # Add feature information if available
     if features_info:
+        summary_text += "\n🧠 Features:\n"
         for feat_name, features in features_info.items():
-            rr.log(f"stats/features_{feat_name}_dim", rr.Scalar(features.shape[1]), static=True)
-            rr.log(f"stats/features_{feat_name}_mean_norm", rr.Scalar(np.linalg.norm(features, axis=1).mean()), static=True)
+            feat_dim = features.shape[1]
+            feat_mean_norm = np.linalg.norm(features, axis=1).mean()
+            feat_std_norm = np.linalg.norm(features, axis=1).std()
+            
+            # Log individual feature stats
+            rr.log(f"stats/features_{feat_name}_dim", rr.Scalar(feat_dim), static=True)
+            rr.log(f"stats/features_{feat_name}_mean_norm", rr.Scalar(float(feat_mean_norm)), static=True)
+            rr.log(f"stats/features_{feat_name}_std_norm", rr.Scalar(float(feat_std_norm)), static=True)
+            
+            summary_text += f"   • {feat_name.upper()}: {feat_dim}D features, norm μ={feat_mean_norm:.3f} σ={feat_std_norm:.3f}\n"
+    
+    summary_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Log the comprehensive summary as a text log
+    rr.log("stats/summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO), static=True)
+    
+    # Also print to console for immediate reference
+    print(summary_text)
 
     print("🎉 Enhanced featurized pointcloud visualization complete!")
     print("\n📋 Available views in Rerun:")
@@ -921,7 +959,8 @@ def visualize_featurized_pointcloud(
             print("  - world/static_highlights: Static random highlights")
         if animate_highlights_flag:
             print("  - world/pointcloud_rgb/highlights: Dynamic animated highlights")
-    print("  - stats/*: Various statistics")
+    print("  - stats/summary: Comprehensive pointcloud summary with metrics and feature info")
+    print("  - stats/*: Individual metric values (num_points, bbox dimensions, feature stats)")
     
     if remote_host:
         print(f"🌐 Streaming to {remote_host}:{remote_port}. Open the Rerun viewer and connect.")

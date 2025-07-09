@@ -22,6 +22,7 @@ rendering:
   point_size: 0.01
   create_mesh: true
   mesh_method: "poisson"  # poisson, ball_pivoting, alpha_shape
+  alpha_value: 0.02  # smaller values = denser mesh (only used for alpha_shape)
   use_voxels: false
   voxel_size: 0.05
 
