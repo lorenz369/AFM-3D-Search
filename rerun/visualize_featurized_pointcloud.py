@@ -172,16 +172,17 @@ def features_to_colors_pca(features, n_components=3, method='hsv'):
     
     return colors
 
-def estimate_normals_and_mesh(points, colors=None, method='poisson', depth=9, density_threshold=0.1):
+def estimate_normals_and_mesh(points, colors=None, method='poisson', depth=9, density_threshold=0.1, alpha_value=0.03):
     """
     Create surface mesh from pointcloud using various reconstruction methods.
     
     Args:
         points: numpy array [N, 3]
         colors: numpy array [N, 3] optional
-        method: 'poisson', 'ball_pivoting', or 'delaunay'
+        method: 'poisson', 'ball_pivoting', or 'alpha_shape'
         depth: depth for Poisson reconstruction
         density_threshold: threshold for removing low-density vertices
+        alpha_value: alpha value for alpha shape reconstruction (smaller = denser mesh)
     
     Returns:
         vertices, faces, vertex_colors (if colors provided)
@@ -229,9 +230,8 @@ def estimate_normals_and_mesh(points, colors=None, method='poisson', depth=9, de
         )
     
     elif method == 'alpha_shape':
-        print("Running Alpha Shape reconstruction...")
-        alpha = 0.03  # You may need to tune this
-        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha)
+        print(f"Running Alpha Shape reconstruction (alpha={alpha_value})...")
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha_value)
     
     else:
         print(f"Unknown reconstruction method: {method}")
@@ -951,9 +951,8 @@ def main():
     parser.add_argument("pointcloud_dir", 
                        help="Directory containing featurized pointcloud .pt files")
     parser.add_argument("--file-type",
-                       choices=["clip", "dino", "combined"],
                        default="combined",
-                       help="Which .pt file to visualize")
+                       help="Which .pt file to visualize (use discovered file keys like 'clip', 'dino', 'combined', or actual filenames without extension)")
     parser.add_argument("--mode",
                        choices=["serve", "save", "web"],
                        default="serve",
@@ -1017,6 +1016,13 @@ def main():
         files_info = discover_featurized_files(args.pointcloud_dir)
     except Exception as e:
         print(f"Error discovering files: {e}")
+        return
+
+    # Validate file type selection
+    if args.file_type not in files_info:
+        print(f"Error: File type '{args.file_type}' not found.")
+        print(f"Available file types: {list(files_info.keys())}")
+        print(f"Use one of these keys with --file-type")
         return
 
     visualize_featurized_pointcloud(

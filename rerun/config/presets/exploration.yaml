@@ -1,0 +1,16 @@
+# Complete preset for exploring a new pointcloud dataset
+defaults:
+  - base_config
+  - visualization: standard
+  - features: both_features
+  - highlighting: basic_highlights
+
+# Good for initial exploration
+mode: "web"  # Opens browser automatically
+file_type: "combined"
+
+rendering:
+  point_size: 0.02  # Larger points for better visibility
+
+features:
+  pca_method: "hsv"  # Better visual separation 

@@ -1,0 +1,8 @@
+# @package _global_
+# Basic highlighting - disabled by default
+
+highlighting:
+  enable: false
+  mode: "random_points"
+  animate: false
+  animation_duration: 30.0 

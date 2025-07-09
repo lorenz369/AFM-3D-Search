@@ -1,0 +1,7 @@
+# @package _global_
+# Show only CLIP features
+
+features:
+  show_features: true
+  feature_type: "clip"
+  pca_method: "hsv" 

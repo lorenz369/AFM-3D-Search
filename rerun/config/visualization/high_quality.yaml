@@ -1,0 +1,13 @@
+# @package _global_
+# High-quality visualization with mesh reconstruction
+
+mode: "serve"
+server:
+  port: 9878
+
+rendering:
+  point_size: 0.02
+  create_mesh: true
+  mesh_method: "poisson"
+  use_voxels: true
+  voxel_size: 0.03 

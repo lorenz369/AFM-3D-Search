@@ -1,0 +1,45 @@
+# Preset for text-based semantic search
+# Use CLIP features for text similarity search
+
+# Self-contained configuration for text search
+defaults:
+  - _self_
+
+# Required parameter - user must provide this
+pointcloud_dir: ???
+
+# Optimized for text search
+file_type: "clip"  # Use CLIP features specifically
+
+# Server settings
+mode: "serve"
+server:
+  port: 9878
+
+# Rendering optimized for highlighting
+rendering:
+  point_size: 0.012  # Slightly larger for better visibility
+  create_mesh: false
+  mesh_method: "poisson"
+  use_voxels: false
+  voxel_size: 0.05
+
+# Feature settings - focus on CLIP only for text search
+features:
+  show_features: true
+  feature_type: "clip"  # Only show CLIP features
+  pca_method: "hsv"
+
+# Enable highlighting for search results
+highlighting:
+  enable: true  # Show search results
+  mode: "random_points"
+  animate: false
+  animation_duration: 30.0
+
+# Text similarity settings with good defaults
+text_similarity:
+  query: "chair"  # Example query - override via CLI
+  top_k: 200
+  threshold: 0.25  # Balanced threshold
+  clip_model_version: "ViT-B/32" 
