@@ -894,11 +894,11 @@ def visualize_featurized_pointcloud(
     bbox_size = bbox_max - bbox_min
     
     # Log individual scalar values properly
-    rr.log("stats/num_points", rr.Scalar(len(points)), static=True)
-    rr.log("stats/bbox_size_x", rr.Scalar(float(bbox_size[0])), static=True)
-    rr.log("stats/bbox_size_y", rr.Scalar(float(bbox_size[1])), static=True)
-    rr.log("stats/bbox_size_z", rr.Scalar(float(bbox_size[2])), static=True)
-    rr.log("stats/bbox_volume", rr.Scalar(float(np.prod(bbox_size))), static=True)
+    rr.log("stats/pointcloud/num_points", rr.Scalar(len(points)), static=True)
+    rr.log("stats/pointcloud/bbox_size_x", rr.Scalar(float(bbox_size[0])), static=True)
+    rr.log("stats/pointcloud/bbox_size_y", rr.Scalar(float(bbox_size[1])), static=True)
+    rr.log("stats/pointcloud/bbox_size_z", rr.Scalar(float(bbox_size[2])), static=True)
+    rr.log("stats/pointcloud/bbox_volume", rr.Scalar(float(np.prod(bbox_size))), static=True)
     
     # Summary text log with all key information
     summary_text = f"""📊 POINTCLOUD SUMMARY
@@ -920,16 +920,16 @@ def visualize_featurized_pointcloud(
             feat_std_norm = np.linalg.norm(features, axis=1).std()
             
             # Log individual feature stats
-            rr.log(f"stats/features_{feat_name}_dim", rr.Scalar(feat_dim), static=True)
-            rr.log(f"stats/features_{feat_name}_mean_norm", rr.Scalar(float(feat_mean_norm)), static=True)
-            rr.log(f"stats/features_{feat_name}_std_norm", rr.Scalar(float(feat_std_norm)), static=True)
+            rr.log(f"stats/pointcloud/features_{feat_name}_dim", rr.Scalar(feat_dim), static=True)
+            rr.log(f"stats/pointcloud/features_{feat_name}_mean_norm", rr.Scalar(float(feat_mean_norm)), static=True)
+            rr.log(f"stats/pointcloud/features_{feat_name}_std_norm", rr.Scalar(float(feat_std_norm)), static=True)
             
             summary_text += f"   • {feat_name.upper()}: {feat_dim}D features, norm μ={feat_mean_norm:.3f} σ={feat_std_norm:.3f}\n"
     
     summary_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Log the comprehensive summary as a text log
-    rr.log("stats/summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO), static=True)
+    rr.log("docs/summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO), static=True)
     
     # Also print to console for immediate reference
     print(summary_text)
