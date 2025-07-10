@@ -8,7 +8,7 @@ defaults:
 pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/ARKitScenes_fpt
 
 # File type to visualize (discovered automatically)
-file_type: "45261495"
+file_type: "42447230"
 
 # Visualization mode
 mode: "serve"  # serve, save, web
@@ -21,7 +21,7 @@ server:
 rendering:
   point_size: 0.01
   create_mesh: true
-  mesh_method: "alpha_shape"  # poisson, ball_pivoting, alpha_shape
+  mesh_method: "ball_pivoting"  # poisson, ball_pivoting, alpha_shape
   alpha_value: 0.02  # smaller values = denser mesh (only used for alpha_shape)
   use_voxels: false
   voxel_size: 0.05
@@ -45,3 +45,9 @@ text_similarity:
   top_k: 100
   threshold: 0.3
   clip_model_version: "ViT-B/32"  # ViT-B/32, ViT-L/14 
+
+interactive_search:
+  enable: false
+  outlier_method: "adaptive"
+  use_statistical_outliers: true
+  use_dino_filtering: true 

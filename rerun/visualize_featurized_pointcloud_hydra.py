@@ -96,6 +96,13 @@ class TextSimilarityConfig:
     clip_model_version: str = "ViT-B/32"
 
 @dataclass
+class InteractiveSearchConfig:
+    enable: bool = False
+    outlier_method: str = "adaptive"  # iqr, percentile, z_score, adaptive, combined
+    use_statistical_outliers: bool = True
+    use_dino_filtering: bool = True
+
+@dataclass
 class VisualizationConfig:
     # Basic settings
     pointcloud_dir: str = "???"
@@ -108,6 +115,7 @@ class VisualizationConfig:
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     highlighting: HighlightingConfig = field(default_factory=HighlightingConfig)
     text_similarity: TextSimilarityConfig = field(default_factory=TextSimilarityConfig)
+    interactive_search: InteractiveSearchConfig = field(default_factory=InteractiveSearchConfig)
 
 # Register config classes with Hydra
 cs = ConfigStore.instance()
@@ -337,8 +345,40 @@ def main(cfg: DictConfig) -> None:
         print(f"Available file types: {list(files_info.keys())}")
         return
 
-    # Convert DictConfig to parameters for the visualization function
-    visualize_featurized_pointcloud_hydra(cfg, files_info)
+    # Check if interactive mode is enabled
+    if cfg.interactive_search.enable:
+        print("⚡ INTERACTIVE MODE ENABLED ⚡")
+
+        # Lazily import to avoid issues if dependencies are not installed
+        from visualize_interactive_text_search import InteractiveTextSearch, HAS_CLIP_ENCODER as HAS_INTERACTIVE_CLIP_ENCODER, HAS_OPEN3D as HAS_INTERACTIVE_OPEN3D
+
+        if not HAS_INTERACTIVE_CLIP_ENCODER:
+            print("❌ ClipEncoder not available. Interactive search requires CLIP functionality.")
+            return
+
+        create_mesh_flag = cfg.rendering.create_mesh
+        if create_mesh_flag and not HAS_INTERACTIVE_OPEN3D:
+             print("⚠️  Open3D not available. Disabling mesh creation for interactive mode.")
+             create_mesh_flag = False
+
+        try:
+            interactive_search = InteractiveTextSearch(
+                files_info=files_info,
+                file_key=cfg.file_type,
+                clip_model_version=cfg.text_similarity.clip_model_version,
+                create_mesh=create_mesh_flag,
+                outlier_method=cfg.interactive_search.outlier_method,
+                use_statistical_outliers=cfg.interactive_search.use_statistical_outliers,
+                use_dino_filtering=cfg.interactive_search.use_dino_filtering,
+            )
+            interactive_search.run_interactive_session(port=cfg.server.port)
+        except Exception as e:
+            print(f"❌ Error starting interactive session: {e}")
+            raise
+
+    else:
+        # Convert DictConfig to parameters for the visualization function
+        visualize_featurized_pointcloud_hydra(cfg, files_info)
 
 if __name__ == "__main__":
     main() 

@@ -45,3 +45,6 @@ text_similarity:
   top_k: 100
   threshold: 0.3
   clip_model_version: "ViT-B/32"  # ViT-B/32, ViT-L/14 
+
+interactive_search:
+  enable: false 

@@ -45,7 +45,7 @@ from visualize_featurized_pointcloud import (
 )
 
 def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.1, 
-                              percentile_threshold=95, iqr_multiplier=1.5, 
+                              percentile_threshold=95, iqr_multiplier=2.5, 
                               z_score_threshold=2.0, min_points=5):
     """
     Detect outlier high-similarity points using various statistical methods.
@@ -98,12 +98,14 @@ def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.
         threshold = q75 + iqr_multiplier * iqr
         outlier_mask = valid_similarities >= threshold
         method_used = 'iqr'
+        stats['iqr_multiplier'] = iqr_multiplier
         
     elif method == 'percentile':
         # Percentile-based detection
         threshold = np.percentile(valid_similarities, percentile_threshold)
         outlier_mask = valid_similarities >= threshold
         method_used = 'percentile'
+        stats['percentile_threshold'] = percentile_threshold
         
     elif method == 'z_score':
         # Z-score based detection
@@ -111,6 +113,7 @@ def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.
         threshold = mean_sim + z_score_threshold * std_sim
         outlier_mask = z_scores >= z_score_threshold
         method_used = 'z_score'
+        stats['z_score_threshold'] = z_score_threshold
         
     elif method == 'adaptive':
         # Adaptive method: choose based on data characteristics
@@ -118,15 +121,18 @@ def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.
             threshold = q75 + iqr_multiplier * iqr
             outlier_mask = valid_similarities >= threshold
             method_used = 'iqr'
+            stats['iqr_multiplier'] = iqr_multiplier
         elif std_sim > 0.02:  # If there's decent variation, use z-score
             z_scores = (valid_similarities - mean_sim) / (std_sim + 1e-8)
             threshold = mean_sim + z_score_threshold * std_sim
             outlier_mask = z_scores >= z_score_threshold
             method_used = 'z_score'
+            stats['z_score_threshold'] = z_score_threshold
         else:  # Fall back to percentile
             threshold = np.percentile(valid_similarities, percentile_threshold)
             outlier_mask = valid_similarities >= threshold
             method_used = 'percentile'
+            stats['percentile_threshold'] = percentile_threshold
             
     elif method == 'combined':
         # Combined approach: use multiple methods and take intersection
@@ -146,6 +152,9 @@ def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.
         outlier_mask = iqr_outliers | z_outliers | perc_outliers
         threshold = min(iqr_threshold, mean_sim + z_score_threshold * std_sim, perc_threshold)
         method_used = 'combined'
+        stats['iqr_multiplier'] = iqr_multiplier
+        stats['z_score_threshold'] = z_score_threshold
+        stats['percentile_threshold'] = percentile_threshold
     
     else:
         raise ValueError(f"Unknown method: {method}")
@@ -173,7 +182,7 @@ def create_statistical_text_similarity_highlights(points, clip_features, text_qu
                                                  outlier_method='adaptive',
                                                  min_threshold=0.1,
                                                  percentile_threshold=95,
-                                                 iqr_multiplier=1.5,
+                                                 iqr_multiplier=2.5,
                                                  z_score_threshold=2.0,
                                                  min_points=5,
                                                  highlight_color=[1.0, 0.8, 0.0]):
@@ -967,6 +976,14 @@ class InteractiveTextSearch:
                     rr.log("stats/outliers/q75", rr.Scalars(float(stats.get('q75', 0))))
                     rr.log("stats/outliers/outlier_percentage", rr.Scalars(float(stats.get('outlier_percentage', 0))))
                     
+                    # Log parameters used for optimization
+                    if 'iqr_multiplier' in stats:
+                        rr.log("stats/outliers/param_iqr_multiplier", rr.Scalars(float(stats.get('iqr_multiplier'))))
+                    if 'percentile_threshold' in stats:
+                        rr.log("stats/outliers/param_percentile_threshold", rr.Scalars(float(stats.get('percentile_threshold'))))
+                    if 'z_score_threshold' in stats:
+                        rr.log("stats/outliers/param_z_score_threshold", rr.Scalars(float(stats.get('z_score_threshold'))))
+
                     # Log DINO filtering info if used
                     if stats.get('dino_filtering_enabled', False):
                         rr.log("stats/outliers/dino_enabled", rr.Scalars(1))
@@ -1030,17 +1047,27 @@ class InteractiveTextSearch:
                 
                 # Console output
                 if use_statistical_outliers:
+                    # Helper to build param string
+                    param_str = ""
+                    stats = self.last_outlier_stats
+                    if 'iqr_multiplier' in stats:
+                        param_str += f", IQR Mult: {stats['iqr_multiplier']}"
+                    if 'percentile_threshold' in stats:
+                        param_str += f", %ile: {stats['percentile_threshold']}"
+                    if 'z_score_threshold' in stats:
+                        param_str += f", Z-Score: {stats['z_score_threshold']}"
+
                     if use_dino_filtering and self.has_dino_features and self.last_outlier_stats.get('dino_filtering_enabled', False):
                         dino_info = self.last_outlier_stats.get('dino_cluster_info', {})
                         points_before = self.last_outlier_stats.get('points_before_dino', 0)
                         points_after = self.last_outlier_stats.get('points_after_dino', 0)
                         print(f"✨ Hybrid CLIP+DINO search results for '{query}':")
                         print(f"   CLIP outliers: {points_before} → DINO filtered: {points_after}")
-                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}")
+                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
                         print(f"   Final results: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
                     else:
                         print(f"✨ Statistical outlier search results for '{query}':")
-                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}")
+                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
                         print(f"   Outliers: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
                 else:
                     print(f"✨ Traditional search results for '{query}':")

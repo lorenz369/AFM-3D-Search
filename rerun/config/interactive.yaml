@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - base_config
+
+# Enable interactive search mode by default
+interactive_search:
+  enable: true
+  outlier_method: "adaptive"
+  use_statistical_outliers: true
+  use_dino_filtering: true
+
+# Optional: override other settings for this preset
+rendering:
+  create_mesh: true
+
+text_similarity:
+  clip_model_version: "ViT-B/32"
+
+highlighting:
+  enable: false # Disable static highlighting for interactive mode 

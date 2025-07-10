@@ -11,6 +11,9 @@ python visualize_featurized_pointcloud_hydra.py pointcloud_dir=/path/to/data
 # Text-based semantic search
 python visualize_featurized_pointcloud_hydra.py --config-name=text_search pointcloud_dir=/path/to/data text_similarity.query='red car'
 
+# Interactive text search with live updates
+python visualize_featurized_pointcloud_hydra.py --config-name=interactive pointcloud_dir=/path/to/data
+
 # High-quality with mesh reconstruction
 python visualize_featurized_pointcloud_hydra.py pointcloud_dir=/path/to/data rendering.create_mesh=true rendering.point_size=0.02
 ```
@@ -20,6 +23,7 @@ python visualize_featurized_pointcloud_hydra.py pointcloud_dir=/path/to/data ren
 ### Available Presets
 - **`base_config`** (default): Balanced settings for general exploration
 - **`text_search`**: Optimized for CLIP-based semantic search
+- **`interactive`**: Launches a real-time, interactive text search session
 
 ### Core Configuration Structure
 ```yaml
@@ -53,6 +57,12 @@ text_similarity:
   top_k: 100              # Number of results
   threshold: 0.3          # Similarity threshold
   clip_model_version: "ViT-B/32"  # CLIP model
+
+interactive_search:
+  enable: false                 # Enable interactive search mode
+  outlier_method: "adaptive"      # Statistical outlier detection method
+  use_statistical_outliers: true  # Use statistical methods vs. fixed threshold
+  use_dino_filtering: true        # Use DINO features for structural filtering
 ```
 
 ## Complete Configuration Reference
@@ -276,6 +286,34 @@ text_similarity:
   - `"ViT-L/14"`: 768-dimensional features, slower, higher accuracy
 - **Auto-detection**: Script attempts to detect correct model from feature dimensions
 
+### Interactive Text Search Configuration
+
+This section controls the real-time interactive search session, which allows for live querying and dynamic adjustment of search parameters.
+
+#### `interactive_search.enable`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Enables or disables the interactive search mode. When `true`, the script launches a persistent session that accepts live input from the terminal and file changes.
+
+#### `interactive_search.outlier_method`
+- **Type**: String
+- **Default**: `"adaptive"`
+- **Options**: `"adaptive"`, `"iqr"`, `"percentile"`, `"z_score"`, `"combined"`
+- **Description**: Sets the statistical method used to identify high-similarity points as outliers. This avoids the need for manual threshold tuning.
+- **When to change**: Use `"iqr"` or `"z_score"` for more predictable behavior if the adaptive method is not ideal for your data.
+
+#### `interactive_search.use_statistical_outliers`
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: Toggles between statistical outlier detection and the traditional fixed-threshold method for identifying search results.
+- **When to disable**: Set to `false` if you prefer to manually control the search with `text_similarity.threshold` and `text_similarity.top_k`.
+
+#### `interactive_search.use_dino_filtering`
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: Enables hybrid CLIP+DINO search. After finding semantically similar points with CLIP, it uses DINO features to filter for results that are structurally coherent, reducing scattered noise.
+- **When to disable**: Set to `false` to perform a pure semantic search using only CLIP features. This can be faster but may yield less clean object selections.
+
 ## Detailed Configuration Reference
 
 ### Core Settings
@@ -415,6 +453,15 @@ python visualize_featurized_pointcloud_hydra.py \
   highlighting.mode=spatial_clusters \
   highlighting.animation_duration=60.0
 ```
+
+### Live Interactive Search
+```bash
+python visualize_featurized_pointcloud_hydra.py \
+  --config-name=interactive \
+  pointcloud_dir=/path/to/data \
+  rendering.create_mesh=true
+```
+This mode allows you to type queries directly into the terminal and see results update in real-time.
 
 ### Performance Optimization for Large Datasets
 ```bash

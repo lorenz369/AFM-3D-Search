@@ -42,5 +42,8 @@ highlighting:
 text_similarity:
   query: "chair"  # Example query - override via CLI
   top_k: 200  # Show more results
-  threshold: 0.2  # Lower threshold for more matches (was 0.25)
+  threshold: 0.25  # Lower threshold for more matches (was 0.25)
   clip_model_version: "ViT-B/32"  # Will be auto-detected based on features 
+
+interactive_search:
+  enable: false 
