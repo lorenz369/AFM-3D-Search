@@ -13,19 +13,17 @@ from werkzeug.utils import secure_filename
 import torch
 
 # --- Path Setup ---
-# Get the root directory of your project (AFM-3D-Search)
+# Get the root directory of your project (the directory containing this script)
 PROJECT_ROOT = Path(__file__).parent.resolve()
 # Add the 'src' directory from the 'ml-depth-pro' submodule to the Python path
 SRC_PATH = PROJECT_ROOT / "ml-depth-pro" / "src"
 sys.path.insert(0, str(SRC_PATH))
 
 # --- Corrected Imports ---
-# Now that the path is set correctly, we can import 'depth_pro' directly
 try:
     from depth_pro.cli.run import run as run_depth_pro
     from depth_pro import create_model_and_transforms
 except ImportError as e:
-    # This will give a more helpful error if the path is still wrong
     raise ImportError(
         f"Could not import 'depth_pro'. "
         f"Please check that the path '{SRC_PATH}' is correct and contains the 'depth_pro' directory. Original error: {e}"
@@ -34,6 +32,7 @@ except ImportError as e:
 
 # --- Logging Configuration ---
 try:
+    # Assuming you might have a custom logging config file
     from logging_config import LOGGING_CONFIG
     logging.config.dictConfig(LOGGING_CONFIG)
 except ImportError:
@@ -44,6 +43,8 @@ logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 TEMP_UPLOAD_FOLDER = PROJECT_ROOT / 'temp_uploads'
+# ⭐️ MODIFIED: This is the final destination for locate-3d
+ARKIT_DATA_DIR = Path.home() / "arkit_uploads"
 ALLOWED_EXTENSIONS = {'zip'}
 os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
 
@@ -87,48 +88,46 @@ def allowed_file(filename):
 
 def process_data_in_background(filepath, original_filename):
     """
-    Unzips the file and runs depth estimation using the pre-loaded model.
+    Unzips the file into the correct ARKitScenes structure and runs depth estimation.
     """
     logger.info(f"Starting background processing for '{original_filename}'.")
     try:
-        output_parent_folder = Path.home() / "arkit_uploads"
+        # ⭐️ MODIFIED: Set the target directory structure required by locate-3d
+        # This will be ~/arkit_uploads/raw/Training/
+        output_parent_folder = ARKIT_DATA_DIR / "raw" / "Training"
         os.makedirs(output_parent_folder, exist_ok=True)
 
-        logger.info(f"Unzipping '{original_filename}'...")
+        logger.info(f"Unzipping '{original_filename}' to '{output_parent_folder}'...")
+        # Unzip directly into the target folder
         subprocess.run(["unzip", "-o", filepath, "-d", str(output_parent_folder)], check=True, capture_output=True, text=True)
         logger.info("Unzip complete.")
 
+        # The unzipped folder will have the same name as the zip file, without the extension
         base_name = original_filename.rsplit('.', 1)[0]
-        extracted_folder_path = output_parent_folder / base_name
-        
-        final_destination_path = output_parent_folder / f"{base_name}_processed"
-        counter = 1
-        while final_destination_path.exists():
-            final_destination_path = output_parent_folder / f"{base_name}_processed_{counter}"
-            counter += 1
-        
-        if extracted_folder_path.exists():
-            os.rename(extracted_folder_path, final_destination_path)
-            logger.info(f"Folder organized. Final destination: {final_destination_path}")
-        else:
-            logger.error(f"Expected folder '{extracted_folder_path}' not found after unzip.")
+        scene_path = output_parent_folder / base_name
+         
+        if not scene_path.exists():
+            logger.error(f"Expected folder '{scene_path}' not found after unzip.")
             return
+        
+        logger.info(f"Scene data available at: {scene_path}")
 
-        color_folder = final_destination_path / "color"
-        depth_output_folder = final_destination_path / "depth"
+        # ⭐️ MODIFIED: Use the correct folder names from the iOS app
+        color_folder = scene_path / "lowres_wide"
+        depth_output_folder = scene_path / "lowres_depth" # This is where the output will go
 
         if color_folder.is_dir():
             logger.info(f"Running Depth Estimation on '{color_folder}'...")
             args = RunArgs(image_path=color_folder, output_path=depth_output_folder)
-            
+             
             start_time = time.time()
             run_depth_pro(args, model=MODEL, transform=TRANSFORM)
             end_time = time.time()
             duration = end_time - start_time
-            
-            logger.info(f"✅ Depth Estimation complete. Time taken: {duration:.2f} seconds.")
+             
+            logger.info(f"✅ Depth Estimation complete. Output in '{depth_output_folder}'. Time taken: {duration:.2f} seconds.")
         else:
-            logger.error(f"'color' folder not found in {final_destination_path}.")
+            logger.error(f"'lowres_wide' folder not found in {scene_path}.")
 
     except subprocess.CalledProcessError as e:
         logger.exception("A subprocess error occurred during unzip.")
@@ -150,12 +149,13 @@ def upload_and_process_scene():
         return jsonify({"error": "No file selected"}), 400
     if file and allowed_file(file.filename):
         original_filename = secure_filename(file.filename)
+        # Use a unique name for the temporary file to avoid conflicts
         temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], str(uuid.uuid4()) + ".zip")
         file.save(temp_filepath)
-        
+         
         thread = threading.Thread(target=process_data_in_background, args=(temp_filepath, original_filename))
         thread.start()
-        
+         
         return jsonify({
             "message": "File upload accepted. Processing in the background.",
             "filename": original_filename,
@@ -163,7 +163,7 @@ def upload_and_process_scene():
     else:
         return jsonify({"error": "File type not allowed."}), 400
 
-# This block is not used when running with Gunicorn
+# This block is not used when running with a production server like Gunicorn
 if __name__ == '__main__':
     logger.warning("Running in development mode. Use a WSGI server like Gunicorn for production.")
     app.run(host='0.0.0.0', port=8080, debug=False)
