@@ -80,7 +80,7 @@ Z: {points[:,2].min():.2f} → {points[:,2].max():.2f}"""
 
 
 
-    # Load the .ply file
+    # Load the original .ply file
     ply_path = "locate-3d/locate3d_data/dataset/arkitscenes/raw/Training/42444821/42444821_3dod_mesh.ply"  # Change this to your file path
     pcd = o3d.io.read_point_cloud(ply_path)
 
