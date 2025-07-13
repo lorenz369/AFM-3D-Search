@@ -6,4 +6,4 @@
 	url = https://github.com/lorenz369/MASt3R-SLAM
 [submodule "Mask3D"]
 	path = Mask3D
-	url = https://github.com/username/Mask3D.git
+	url = https://github.com/JonasSchult/Mask3D.git
