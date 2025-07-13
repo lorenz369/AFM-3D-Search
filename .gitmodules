@@ -7,3 +7,7 @@
 [submodule "ml-depth-pro"]
 	path = ml-depth-pro
 	url = https://github.com/apple/ml-depth-pro.git
+[submodule "vggt"]
+	path = vggt
+	url = https://github.com/tim-cramer/vggt.git
+	branch = feature/pointcloud-aggregation
