@@ -76,14 +76,14 @@ def main(args):
 
     # Optional: log original .ply geometry
     if args.ply_path:
-        print(f"🗂️  Logging original PLY: {args.ply_path}")
+        print(f":card_index_dividers:  Logging original PLY: {args.ply_path}")
         pcd = o3d.io.read_point_cloud(args.ply_path)
         points_ply = np.asarray(pcd.points)
         colors_ply = np.asarray(pcd.colors) if pcd.has_colors() else np.ones_like(points_ply) * 0.8
         log_pointcloud("world/original_pointcloud", points_ply, colors_ply, radii=0.007)
 
     # Load featurized pointcloud
-    print(f"📦 Loading: {args.pt_path}")
+    print(f":package: Loading: {args.pt_path}")
     data = torch.load(args.pt_path, map_location='cpu')
     points = data["points"].numpy()
     rgb = data["rgb"].numpy()
@@ -93,14 +93,14 @@ def main(args):
     # Visualize any available features (CLIP, DINO, SAM)
     for key in ["features_clip", "features_dino", "features_sam"]:
         if key in data:
-            print(f"🎨 Visualizing {key} as PCA")
+            print(f":art: Visualizing {key} as PCA")
             features = data[key].cpu().numpy().astype(np.float32)
             colors = pca_to_rgb(features)
             log_pointcloud(f"world/{key}_pca", points, colors)
 
     # Optional: run CLIP similarity search
     if "features_clip" in data:
-        print(f"🔍 Matching CLIP features to: '{args.query}'")
+        print(f":mag: Matching CLIP features to: '{args.query}'")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         clip_dim = data["features_clip"].shape[1]
         clip_model_name = "ViT-L/14" if clip_dim == 768 else "ViT-B/32"
@@ -112,7 +112,7 @@ def main(args):
             features_clip = torch.tensor(features_clip)
 
         def run_query(text_query):
-            rr.log("query/current", rr.TextDocument(f"🔎 Current query: '{text_query}'"))
+            rr.log("query/current", rr.TextDocument(f":mag_right: Current query: '{text_query}'"))
             rr.log("world/clip_text_topk", rr.Clear(recursive=True))
             rr.log("world/clip_text_adaptive", rr.Clear(recursive=True))
             rr.log("world/clip_text_zscore", rr.Clear(recursive=True))
@@ -122,16 +122,16 @@ def main(args):
 
             # --- Top-k ---
             topk_idx = sim.argsort()[-args.topk:]
-            log_pointcloud("world/clip_text_topk (red)", points[topk_idx],
+            log_pointcloud("world/clip_topk (red)", points[topk_idx],
                         np.tile([[1.0, 0.2, 0.2]], (len(topk_idx), 1)), radii=0.025)
 
             # --- Adaptive (Percentile) ---
-            perc_thresh = np.percentile(sim, 99)
+            perc_thresh = np.percentile(sim, 90)
             idx_adaptive = np.where(sim >= perc_thresh)[0]
             if len(idx_adaptive) < 20:
                 idx_adaptive = sim.argsort()[-20:]
                 perc_thresh = sim[idx_adaptive[0]]
-            log_pointcloud("world/clip_text_adaptive (yellow)", points[idx_adaptive],
+            log_pointcloud("world/clip_adaptive_percentile (yellow)", points[idx_adaptive],
                         np.tile([[1.0, 0.8, 0.1]], (len(idx_adaptive), 1)), radii=0.025)
 
             # --- Z-Score ---
@@ -142,7 +142,7 @@ def main(args):
             if len(idx_zscore) == 0:
                 idx_zscore = sim.argsort()[-20:]
                 z_thresh = sim[idx_zscore[0]]
-            log_pointcloud("world/clip_text_zscore (blue)", points[idx_zscore],
+            log_pointcloud("world/clip_zscore (blue)", points[idx_zscore],
                         np.tile([[0.2, 0.5, 1.0]], (len(idx_zscore), 1)), radii=0.025)
 
             # --- Hybrid (fixed min threshold + fallback) ---
@@ -151,7 +151,7 @@ def main(args):
             if len(idx_hybrid) < 20:
                 idx_hybrid = sim.argsort()[-20:]
                 hybrid_thresh = sim[idx_hybrid[0]]
-            log_pointcloud("world/clip_text_hybrid (green)", points[idx_hybrid],
+            log_pointcloud("world/clip_hybrid (green)", points[idx_hybrid],
                         np.tile([[0.2, 1.0, 0.4]], (len(idx_hybrid), 1)), radii=0.025)
             
             if "features_dino" in data:
@@ -162,22 +162,20 @@ def main(args):
                     points, dino_feat, idx_hybrid,
                     eps=0.4, min_samples=min_samples, spatial_weight=0.3
                 )
-                print(f"✅ DINO DBSCAN retained {len(idx_dino_filtered)} / {len(idx_hybrid)} points")
+                print(f":white_check_mark: DINO DBSCAN retained {len(idx_dino_filtered)} / {len(idx_hybrid)} points")
                 log_pointcloud("world/clip_text_hybrid_dino (purple)", points[idx_dino_filtered],
                             np.tile([[0.7, 0.3, 1.0]], (len(idx_dino_filtered), 1)), radii=0.03)
 
             
-
-
         # Run CLI query if given, then continue into interactive loop
         if args.query:
-            print(f"🔍 One-shot query: '{args.query}'")
+            print(f":mag: One-shot query: '{args.query}'")
             run_query(args.query)
 
-        print("\n💬 Enter additional queries (or 'q' to quit):")
+        print("\n:speech_balloon: Enter additional queries (or 'q' to quit):")
         while True:
             try:
-                user_input = input("🔍 Query: ").strip()
+                user_input = input(":mag: Query: ").strip()
                 if user_input.lower() == 'q':
                     break
                 if user_input:
