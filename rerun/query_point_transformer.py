@@ -24,9 +24,16 @@ def positional_encoding(points):
 # 2. Point Transformer Backbone
 # --------------------------------------
 
+def knn(x, k):
+    """ x: [N, 3] → indices of KNN neighbors [N, K] """
+    dist = torch.cdist(x, x)  # [N, N]
+    _, idx = dist.topk(k=k, largest=False)  # Smallest distances
+    return idx  # [N, K]
+
 class PointTransformerLayer(nn.Module):
-    def __init__(self, dim, pos_mlp_hidden_dim=64):
+    def __init__(self, dim, k=16, pos_mlp_hidden_dim=64):
         super().__init__()
+        self.k = k
         self.pos_mlp = nn.Sequential(
             nn.Linear(3, pos_mlp_hidden_dim),
             nn.ReLU(),
@@ -41,26 +48,27 @@ class PointTransformerLayer(nn.Module):
         self.linear = nn.Linear(dim, dim)
 
     def forward(self, points, x):
-        # points: [N, 3]
-        # x: [N, D]
-        N = points.shape[0]
+        # points: [N, 3], x: [N, D]
         q = self.linear(x)  # [N, D]
 
-        # Compute relative positions for attention
-        diff = points.unsqueeze(1) - points.unsqueeze(0)  # [N, N, 3]
-        pos_enc = self.pos_mlp(diff)  # [N, N, D]
-        attn = F.softmax(self.attn_mlp(q.unsqueeze(1) - q.unsqueeze(0) + pos_enc), dim=1)  # [N, N, D]
+        # Find KNN indices
+        idx = knn(points, self.k)  # [N, K]
+        N, K = idx.shape
+        neighbors = x[idx]  # [N, K, D]
+        relative_pos = points.unsqueeze(1) - points[idx]  # [N, K, 3]
+        pos_enc = self.pos_mlp(relative_pos)  # [N, K, D]
 
-        # Message passing
-        out = (attn * (x.unsqueeze(1) + pos_enc)).sum(dim=1)  # [N, D]
+        attn = F.softmax(self.attn_mlp(q.unsqueeze(1) - neighbors + pos_enc), dim=1)  # [N, K, D]
+
+        out = (attn * (neighbors + pos_enc)).sum(dim=1)  # [N, D]
         return x + self.gamma * out  # Residual connection
-    
+
 class PointTransformerBackbone(nn.Module):
     def __init__(self, in_channels, hidden_dim=256, num_layers=4):
         super().__init__()
         self.input_proj = nn.Linear(in_channels, hidden_dim)
         self.transformer_layers = nn.ModuleList([
-            PointTransformerLayer(dim=hidden_dim, pos_mlp_hidden_dim=64)
+            PointTransformerLayer(dim=hidden_dim, k=16)
             for _ in range(num_layers)
         ])
 
@@ -73,7 +81,6 @@ class PointTransformerBackbone(nn.Module):
             x = layer(points, x)
 
         return x  # [N, hidden_dim]
-
 
 # --------------------------------------
 # 3. Query Decoder (Simple Version)
@@ -130,7 +137,7 @@ class PointTransformerModel(nn.Module):
 # 5. Example Usage
 # --------------------------------------
 
-data = torch.load('locate-3d/cache/ARKitScenes/42444821_combined.pt', map_location=torch.device('cpu'))
+data = torch.load('locate-3d/cache/ARKitScenes/42444821.pt')
 print(data.keys())
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -155,7 +162,8 @@ model = PointTransformerModel(in_features_dim=features.shape[1] + pos_enc_dim).t
 masks, boxes = model(points, features, text_embed)
 
 # ---------- 4️⃣ Rerun Visualization ----------
-rr.init("Locate3D Transformer Query Visualization", spawn=True)
+rr.init("afm-query-remote", spawn=True)
+
 
 points_np = points.cpu().numpy()
 
