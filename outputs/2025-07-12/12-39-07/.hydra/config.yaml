@@ -1,0 +1,31 @@
+pointcloud_dir: locate-3d/cache/ARKitScenes/45261495_combined.pt
+file_type: '42447230'
+mode: serve
+server:
+  port: 9878
+rendering:
+  point_size: 0.01
+  create_mesh: true
+  mesh_method: ball_pivoting
+  alpha_value: 0.02
+  use_voxels: false
+  voxel_size: 0.05
+features:
+  show_features: true
+  feature_type: both
+  pca_method: hsv
+highlighting:
+  enable: false
+  mode: random_points
+  animate: false
+  animation_duration: 30.0
+text_similarity:
+  query: null
+  top_k: 100
+  threshold: 0.3
+  clip_model_version: ViT-B/32
+interactive_search:
+  enable: true
+  outlier_method: adaptive
+  use_statistical_outliers: true
+  use_dino_filtering: true

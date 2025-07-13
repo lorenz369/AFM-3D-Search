@@ -7,8 +7,13 @@ defaults:
 # Required parameter - user must provide this
 pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/ARKitScenes_fpt
 
+# Orignal dense pointcloud path - optional
+original_pointcloud_path: locate-3d/locate3d_data/dataset/arkitscenes/raw/Training/42444821/42444821_3dod_mesh.ply
+
 # File type to visualize (discovered automatically)
-file_type: "42447230"
+file_type: "42444821"
+
+
 
 # Visualization mode
 mode: "serve"  # serve, save, web

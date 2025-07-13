@@ -21,6 +21,7 @@ Usage examples:
 
 import rerun as rr
 import numpy as np
+import open3d as o3d
 import torch
 import os
 import glob
@@ -105,6 +106,7 @@ class InteractiveSearchConfig:
 @dataclass
 class VisualizationConfig:
     # Basic settings
+    original_pointcloud_path: Optional[str] = None
     pointcloud_dir: str = "???"
     file_type: str = "combined"
     mode: str = "serve"
@@ -169,14 +171,26 @@ def visualize_featurized_pointcloud_hydra(cfg: DictConfig, files_info: dict):
     rr.set_time_seconds("timeline", 0.0)
     
     # Load pointcloud
+    # If the original pointcloud path is available in the config, log the original dense pointcloud for reference
+    if hasattr(cfg, "original_pointcloud_path") and cfg.original_pointcloud_path:
+        print(f"🔍 Logging original pointcloud from {cfg.original_pointcloud_path}...")
+        pcd = o3d.io.read_point_cloud(cfg.original_pointcloud_path)
+        points_orig = np.asarray(pcd.points)
+        if pcd.has_colors():
+            colors_orig = np.asarray(pcd.colors)
+        else:
+            colors_orig = np.ones_like(points_orig) * 0.8  # Gray fallback
+        rr.log("world/dense_original_pointcloud", rr.Points3D(positions=points_orig, colors=colors_orig, radii=0.01))
+
+    # Add featurized pointcloud
     points, rgb, features_info = load_featurized_pointcloud(files_info[cfg.file_type])
     
     # Apply voxel grid if requested
     if cfg.rendering.use_voxels:
         points, rgb = create_voxel_grid(points, rgb, cfg.rendering.voxel_size)
     
-    # Log RGB pointcloud
-    rr.log("world/pointcloud_rgb", 
+    # Log voxelized RGB pointcloud
+    rr.log("world/voxelized_pointcloud_rgb", 
            rr.Points3D(points, colors=rgb, radii=cfg.rendering.point_size), 
            static=True)
     
@@ -277,12 +291,12 @@ def visualize_featurized_pointcloud_hydra(cfg: DictConfig, files_info: dict):
     bbox_max = points.max(axis=0)
     bbox_size = bbox_max - bbox_min
     
-    # Log individual scalar values properly
-    rr.log("stats/num_points", rr.Scalar(len(points)), static=True)
-    rr.log("stats/bbox_size_x", rr.Scalar(float(bbox_size[0])), static=True)
-    rr.log("stats/bbox_size_y", rr.Scalar(float(bbox_size[1])), static=True)
-    rr.log("stats/bbox_size_z", rr.Scalar(float(bbox_size[2])), static=True)
-    rr.log("stats/bbox_volume", rr.Scalar(float(np.prod(bbox_size))), static=True)
+    # Log individual scalar values for pointcloud statistics
+    # rr.log("stats/num_points", rr.Scalar(len(points)), static=True)  # Total number of points
+    # rr.log("stats/bbox_size_x", rr.Scalar(float(bbox_size[0])), static=True)  # Bounding box size in X
+    # rr.log("stats/bbox_size_y", rr.Scalar(float(bbox_size[1])), static=True)  # Bounding box size in Y
+    # rr.log("stats/bbox_size_z", rr.Scalar(float(bbox_size[2])), static=True)  # Bounding box size in Z
+    # rr.log("stats/bbox_volume", rr.Scalar(float(np.prod(bbox_size))), static=True)  # Bounding box volume
     
     # Summary text log with all key information
     summary_text = f"""📊 POINTCLOUD SUMMARY
@@ -304,16 +318,16 @@ def visualize_featurized_pointcloud_hydra(cfg: DictConfig, files_info: dict):
             feat_std_norm = np.linalg.norm(features, axis=1).std()
             
             # Log individual feature stats
-            rr.log(f"stats/features_{feat_name}_dim", rr.Scalar(feat_dim), static=True)
-            rr.log(f"stats/features_{feat_name}_mean_norm", rr.Scalar(float(feat_mean_norm)), static=True)
-            rr.log(f"stats/features_{feat_name}_std_norm", rr.Scalar(float(feat_std_norm)), static=True)
+            #rr.log(f"stats/features_{feat_name}_dim", rr.Scalar(feat_dim), static=True)
+            #rr.log(f"stats/features_{feat_name}_mean_norm", rr.Scalar(float(feat_mean_norm)), static=True)
+            #rr.log(f"stats/features_{feat_name}_std_norm", rr.Scalar(float(feat_std_norm)), static=True)
             
             summary_text += f"   • {feat_name.upper()}: {feat_dim}D features, norm μ={feat_mean_norm:.3f} σ={feat_std_norm:.3f}\n"
     
     summary_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Log the comprehensive summary as a text log
-    rr.log("stats/summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO), static=True)
+    #rr.log("stats/summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO), static=True)
     
     # Also print to console for immediate reference
     print(summary_text)
@@ -370,6 +384,7 @@ def main(cfg: DictConfig) -> None:
                 outlier_method=cfg.interactive_search.outlier_method,
                 use_statistical_outliers=cfg.interactive_search.use_statistical_outliers,
                 use_dino_filtering=cfg.interactive_search.use_dino_filtering,
+                original_pointcloud_path=cfg.original_pointcloud_path,  # Add this line
             )
             interactive_search.run_interactive_session(port=cfg.server.port)
         except Exception as e:
