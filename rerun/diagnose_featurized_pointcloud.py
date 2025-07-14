@@ -52,6 +52,52 @@ def select_params_from_mask_size(points, idx_adaptive):
 
     return dbscan_eps, knn_k, min_samples
 
+def refine_with_dino(points, dino_features, clip_indices, knn_k=75, eps=0.3, min_samples=10):
+    """
+    Sharpen CLIP points with local DINO feature refinement.
+    """
+    if len(clip_indices) == 0:
+        return clip_indices
+
+    # Normalize DINO features
+    dino_features = dino_features / (np.linalg.norm(dino_features, axis=1, keepdims=True) + 1e-6)
+
+    # Mean feature from CLIP-red points
+    mean_feat = dino_features[clip_indices].mean(axis=0, keepdims=True)
+    mean_feat /= (np.linalg.norm(mean_feat) + 1e-6)
+
+    # Use spatial KNN to expand locally around red points
+    knn = NearestNeighbors(n_neighbors=knn_k)
+    knn.fit(points)
+    _, neighbor_indices = knn.kneighbors(points[clip_indices])
+
+    neighbor_indices = np.unique(neighbor_indices.flatten())
+
+    # Compute cosine similarity in this LOCAL neighborhood
+    local_features = dino_features[neighbor_indices]
+    similarity = (local_features @ mean_feat.T).squeeze()
+
+    # Threshold locally
+    percentile_thresh = np.percentile(similarity, 90)
+    idx_local_dino = neighbor_indices[similarity >= percentile_thresh]
+    if len(idx_local_dino) < 20:
+        idx_local_dino = neighbor_indices[similarity.argsort()[-20:]]
+
+    # Final DBSCAN for sharpness
+    dino_points = points[idx_local_dino]
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    labels = dbscan.fit_predict(dino_points)
+
+    unique_labels, counts = np.unique(labels[labels >= 0], return_counts=True)
+    if len(unique_labels) > 0:
+        largest_cluster_label = unique_labels[np.argmax(counts)]
+        final_indices = idx_local_dino[labels == largest_cluster_label]
+    else:
+        final_indices = idx_local_dino
+
+    return final_indices
+
+
 
 def compute_clip_similarity(features_clip, text_query, model, device):
     with torch.no_grad():
@@ -109,45 +155,12 @@ def refine_with_zscore_and_knn(points, zscore_indices, percentile_indices,
     final_indices = expanded_indices[labels == largest_cluster_label]
 
     return final_indices
-    
-def filter_with_dino_dbscan(points, dino_features, indices, eps=0.1, min_samples=10, spatial_weight=0.3):
-    """
-    Filter selected points using DBSCAN over combined DINO + spatial features.
-
-    Returns:
-        filtered_indices: subset of `indices` that are part of coherent clusters
-    """
-    if len(indices) < min_samples:
-        return indices  # too few to cluster
-
-    selected_points = points[indices]
-    selected_dino = dino_features[indices]
-
-    # Normalize features
-    dino_norm = selected_dino / (np.linalg.norm(selected_dino, axis=1, keepdims=True) + 1e-8)
-
-    # Normalize spatial coords
-    spatial = selected_points
-    spatial_range = spatial.max(axis=0) - spatial.min(axis=0)
-    spatial_range[spatial_range == 0] = 1
-    spatial_norm = (spatial - spatial.min(axis=0)) / spatial_range
-
-    # Combine with spatial weighting
-    fused = np.concatenate([dino_norm, spatial_norm * spatial_weight], axis=1)
-
-    # Run DBSCAN
-    cluster_labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(fused)
-
-    # Keep points in clusters (not noise)
-    kept = cluster_labels >= 0
-    return indices[kept]
-
 
 
 # ---------- Main ----------
 
 def main(args):
-    rr.init("3D Search", spawn=True, default_port=9878)
+    rr.init("3D Search", spawn=True)
 
     # Optional: log original .ply geometry
     if args.ply_path:
@@ -163,7 +176,7 @@ def main(args):
     points = data["points"].numpy()
     rgb = data["rgb"].numpy()
     if rgb.max() > 1.0: rgb = rgb / 255.0
-    log_pointcloud("world/voxelized_pointcloud", points, rgb, radii=0.02)
+    log_pointcloud("world/voxelized_pointcloud", points, rgb, radii=0.01)
 
     # Visualize any available features (CLIP, DINO, SAM)
     for key in ["features_clip", "features_dino", "features_sam"]:
@@ -236,7 +249,7 @@ def main(args):
                 dbscan_eps=dbscan_eps,
                 dbscan_min_samples=min_samples
             )
-            log_pointcloud("world/refined_query (red)", points[refined_indices],
+            log_pointcloud("world/refined_zscore_knn_query (red)", points[refined_indices],
                 np.tile([[1.0, 0.0, 0.0]], (len(refined_indices), 1)), radii=0.03)
 
 
@@ -262,13 +275,12 @@ def main(args):
             log_pointcloud("world/clip_hybrid_refined (green)", points[final_indices],
                np.tile([[0.2, 1.0, 0.4]], (len(final_indices), 1)), radii=0.025)
 
+            # Refine the red points using DINO
             dino_features = data["features_dino"].cpu().numpy()
-            refined_indices = filter_with_dino_dbscan(
-                points, dino_features, refined_indices,
-                eps=0.1, min_samples=10, spatial_weight=0.3
-            )
-            log_pointcloud("world/refined_query_dino (purple)", points[refined_indices],
-                np.tile([[0.8, 0.2, 1.0]], (len(refined_indices), 1)), radii=0.03)
+            final_dino_indices = refine_with_dino(points, dino_features, refined_indices)
+
+            log_pointcloud("world/refined_query_dino (purple)", points[final_dino_indices],
+                        np.tile([[0.8, 0.2, 1.0]], (len(final_dino_indices), 1)), radii=0.03)
 
             
         # Run CLI query if given, then continue into interactive loop
