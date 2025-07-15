@@ -1,7 +1,3 @@
-[submodule "vggt"]
-	path = vggt
-	url = https://github.com/tim-cramer/vggt.git
-	branch = feature/pointcloud-aggregation
 [submodule "submodules/vggt"]
 	path = submodules/vggt
 	url = https://github.com/tim-cramer/vggt.git
