@@ -82,3 +82,7 @@ This command starts the background worker, which will process jobs as they are c
 python src/afm_3d_search/worker.py
 Once both are running, you can send a POST request with multiple image files to the endpoint http://localhost:8000/v1/scenes. The server will accept the upload and the worker will begin processing the scene.
 ```
+
+
+python src/afm_3d_search/run_pipeline.py scene_id=bude data_source=testing
+uv pip install xFormers

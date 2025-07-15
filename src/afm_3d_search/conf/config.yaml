@@ -1,5 +1,3 @@
-# conf/config.yaml
-
 defaults:
   - _self_
   - paths: default
@@ -7,3 +5,5 @@ defaults:
   - processing: default
 
 run_name: "bude_scan_v1"
+scene_id: null
+data_source: "staging"
