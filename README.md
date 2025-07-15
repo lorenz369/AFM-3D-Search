@@ -61,6 +61,7 @@ Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub
 Copy stuff to server (example)
 ```bash
 rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/ s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/zed s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/zed
 ```
 
 Sync MAST3R SLAMS output (example)
@@ -71,6 +72,7 @@ rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-
 Sync locate-3d preprocessing output (example)
 ```
 rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/ /home/marco/Marco/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/zed /home/marco/Marco/AFM-3D-Search/data/zed
 ```
 
 ## Useful Commands
