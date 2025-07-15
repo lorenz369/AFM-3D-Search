@@ -1,53 +1,32 @@
-# Base configuration for Enhanced Featurized Pointcloud Visualization
-# This file contains the default settings for all visualization parameters
+# Minimal default settings for Interactive Text Search
+# ---------------------------------------------------
 
 defaults:
   - _self_
 
-# Required parameter - user must provide this
-pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/ARKitScenes_fpt
+# REQUIRED: directory containing featurised *.pt files          
+pointcloud_dir: /path/to/featurised/data  # <-- override via CLI
 
-# File type to visualize (discovered automatically)
+# Determine which .pt key/filename (without extension) to load.
 file_type: "42447230"
 
-# Visualization mode
-mode: "serve"  # serve, save, web
 
-# Server configuration
-server:
-  port: 9878
-
-# Rendering settings
 rendering:
   point_size: 0.01
-  create_mesh: true
-  mesh_method: "ball_pivoting"  # poisson, ball_pivoting, alpha_shape
-  alpha_value: 0.02  # smaller values = denser mesh (only used for alpha_shape)
-  use_voxels: false
-  voxel_size: 0.05
-
-# Feature visualization settings
+  create_mesh: true       
+  
+# Feature-to-colour mapping options
 features:
   show_features: true
-  feature_type: "both"  # clip, dino, both
-  pca_method: "hsv"     # rgb, hsv
+  feature_type: "both"     # clip, dino, both
+  pca_method: "hsv"        # rgb, hsv
 
-# Highlighting settings
-highlighting:
-  enable: false
-  mode: "random_points"  # random_points, spatial_clusters, tight_clusters, feature_based, voxel_highlights
-  animate: false
-  animation_duration: 30.0
-
-# Text-based similarity search
-text_similarity:
-  query: null
-  top_k: 100
-  threshold: 0.3
-  clip_model_version: "ViT-B/32"  # ViT-B/32, ViT-L/14 
-
+# Interactive semantic-search controls (1-to-1 with class kwargs)
 interactive_search:
-  enable: false
   outlier_method: "adaptive"
   use_statistical_outliers: true
-  use_dino_filtering: true 
+  use_dino_filtering: true
+
+# Network port for the local gRPC server (optional)
+server:
+  port: 9878 

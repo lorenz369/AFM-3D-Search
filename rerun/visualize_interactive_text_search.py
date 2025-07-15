@@ -4,44 +4,31 @@ Interactive Text Search for Featurized Pointclouds using Rerun SDK
 
 This script provides real-time interactive text search capabilities:
 1. Terminal input: Type queries directly in the terminal
-2. File watching: Edit query.txt file and see results update
-3. Socket interface: Send queries via network socket
+2. Socket interface: Send queries via network socket
 
 Usage:
   python visualize_interactive_text_search.py data/ARKitScenes_fpt --file-type 42447230
 
 Controls:
   - Type in terminal for immediate search
-  - Edit 'query.txt' file for file-based search
   - Press 'q' + Enter to quit
   - Press 'clear' + Enter to clear highlights
 """
-
-import rerun as rr
-import numpy as np
-import torch
-import argparse
-import os
-import sys
-import time
-import threading
 import queue
 import select
+import sys
+import threading
 from pathlib import Path
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-import socket
-import json
 
-# Import visualization functions
+import numpy as np
+import rerun as rr
+
+from clip_encoder import ClipEncoder
 from visualize_featurized_pointcloud import (
-    discover_featurized_files,
-    load_featurized_pointcloud,
-    features_to_colors_pca,
     create_text_similarity_highlights,
-    estimate_normals_and_mesh,  # Add mesh creation
-    HAS_CLIP_ENCODER,
-    HAS_OPEN3D  # Add open3d availability check
+    estimate_normals_and_mesh,
+    features_to_colors_pca,
+    load_featurized_pointcloud,
 )
 
 def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.1, 
@@ -193,7 +180,7 @@ def create_statistical_text_similarity_highlights(points, clip_features, text_qu
     identify the high-similarity outlier group instead of fixed thresholds.
     """
     
-    if not HAS_CLIP_ENCODER or clip_encoder is None:
+    if clip_encoder is None:
         print("⚠️  CLIP encoder not available for text similarity highlighting")
         return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([]), {}
     
@@ -429,7 +416,7 @@ def create_hybrid_clip_dino_highlights(points, clip_features, dino_features, tex
     3. Return the most structurally consistent semantic matches
     """
     
-    if not HAS_CLIP_ENCODER or clip_encoder is None:
+    if clip_encoder is None:
         print("⚠️  CLIP encoder not available for text similarity highlighting")
         return np.array([]), np.array([]).reshape(0, 3), np.array([]).reshape(0, 3), np.array([]), {}
     
@@ -528,35 +515,6 @@ def create_hybrid_clip_dino_highlights(points, clip_features, dino_features, tex
     
     return final_indices, highlight_points, highlight_colors, similarities, outlier_stats
 
-# Add the path to locate-3d for importing ClipEncoder
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'locate-3d'))
-try:
-    from preprocessing.image_features.clip_encoder import ClipEncoder
-except ImportError:
-    print("❌ ClipEncoder not available. This script requires CLIP functionality.")
-    sys.exit(1)
-
-class QueryFileHandler(FileSystemEventHandler):
-    """Handler for watching query file changes."""
-    
-    def __init__(self, query_queue, query_file):
-        self.query_queue = query_queue
-        self.query_file = Path(query_file).name
-        
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-            
-        if Path(event.src_path).name == self.query_file:
-            try:
-                with open(event.src_path, 'r') as f:
-                    query = f.read().strip()
-                if query:
-                    self.query_queue.put(("file", query))
-                    print(f"📁 File query: '{query}'")
-            except Exception as e:
-                print(f"❌ Error reading query file: {e}")
-
 class InteractiveTextSearch:
     """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering."""
     
@@ -621,15 +579,11 @@ class InteractiveTextSearch:
         # is logged at the same instant with `static=True`.
         self.query_counter = 0
         
-        # Query file path
-        self.query_file = Path("query.txt")
-        self._setup_query_file()
-        
         # Pre-compute mesh for base pointcloud if requested
         self.base_mesh_vertices = None
         self.base_mesh_faces = None
         self.base_mesh_colors = None
-        if self.create_mesh and HAS_OPEN3D:
+        if self.create_mesh:
             print("🔺 Pre-computing base mesh...")
             self.base_mesh_vertices, self.base_mesh_faces, self.base_mesh_colors = estimate_normals_and_mesh(
                 self.points, self.rgb, method='ball_pivoting'
@@ -656,24 +610,6 @@ class InteractiveTextSearch:
             print(f"❌ Failed to initialize CLIP encoder: {e}")
             raise
     
-    def _setup_query_file(self):
-        """Setup the query file for file-based input."""
-        if not self.query_file.exists():
-            with open(self.query_file, 'w') as f:
-                f.write("chair\n")
-            print(f"📝 Created query file: {self.query_file}")
-        else:
-            print(f"📝 Using existing query file: {self.query_file}")
-    
-    def start_file_watcher(self):
-        """Start file watcher for query.txt."""
-        event_handler = QueryFileHandler(self.query_queue, self.query_file)
-        observer = Observer()
-        observer.schedule(event_handler, path=str(self.query_file.parent), recursive=False)
-        observer.start()
-        print(f"👀 Watching {self.query_file} for changes...")
-        return observer
-    
     def start_terminal_input(self):
         """Start terminal input thread."""
         def terminal_input_thread():
@@ -682,7 +618,6 @@ class InteractiveTextSearch:
             print("="*60)
             print("💡 How to search:")
             print(f"   • Type queries directly here and press Enter")
-            print(f"   • Edit '{self.query_file}' file in any text editor")
             print("   • Type 'clear' to remove highlights")
             print("   • Type 'q' to quit")
             print("   • Type 'help' for more commands")
@@ -800,9 +735,9 @@ class InteractiveTextSearch:
             
         if not query or not query.strip():
             # Clear highlights
-            rr.log("world/text_similarity_highlights", rr.Clear())
-            rr.log("world/clip_semantic_outliers", rr.Clear())
-            rr.log("world/highlighted_mesh", rr.Clear())
+            rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
+            rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
+            rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
             
             # Clear search stats with better formatting
             rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
@@ -933,10 +868,10 @@ class InteractiveTextSearch:
                             print(f"🔍 Also showing {len(clip_outlier_points)} original CLIP semantic outliers (blue)")
                 else:
                     # Clear CLIP outliers if not using hybrid approach
-                    rr.log("world/clip_semantic_outliers", rr.Clear())
+                    rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
                 
                 # Create mesh for highlighted points if mesh creation is enabled
-                if self.create_mesh and HAS_OPEN3D and len(highlight_points) > 100:
+                if self.create_mesh and len(highlight_points) > 100:
                     print(f"🔺 Creating mesh for {len(highlight_points)} highlighted points...")
                     try:
                         highlight_mesh_vertices, highlight_mesh_faces, highlight_mesh_colors = estimate_normals_and_mesh(
@@ -995,6 +930,7 @@ class InteractiveTextSearch:
                         rr.log("stats/outliers/dino_enabled", rr.Scalars(0))
                     
                     # Create detailed statistical summary with DINO info
+                    visualization_info = ""
                     dino_info = ""
                     if stats.get('dino_filtering_enabled', False):
                         dino_cluster_info = stats.get('dino_cluster_info', {})
@@ -1008,19 +944,25 @@ class InteractiveTextSearch:
    • Reduction: {reduction_pct:.1f}% scattered points filtered out
    • Method: {dino_cluster_info.get('method', 'unknown')} clustering
    • Clusters kept: {dino_cluster_info.get('clusters_kept', 'unknown')}"""
+                        
+                        visualization_info = f"""
+🎨 Visualization:
+   • Blue points: {points_before:,} CLIP semantic outliers (all matches)
+   • Gold points: {points_after:,} DINO filtered results (structured matches)"""
                     else:
                         reason = stats.get('reason', 'unknown')
                         dino_info = f"\n🦕 DINO Filtering: Disabled ({reason})"
-                    
+                        num_results = len(highlight_points)
+                        visualization_info = f"""
+🎨 Visualization:
+   • Gold points: {num_results:,} CLIP semantic outliers (DINO filtering disabled)"""
+
                     stats_summary = f"""📊 HYBRID CLIP+DINO ANALYSIS: '{query}'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 Final Results: {len(highlight_points):,} / {len(self.points):,} points ({stats.get('outlier_percentage', 0):.1f}%)
 📈 CLIP Outlier Method: {method_used}
 📊 CLIP Threshold: {display_threshold:.3f} (automatically determined){dino_info}
-
-🎨 Visualization:
-   • Blue points: {points_before:,} CLIP semantic outliers (all matches)
-   • Gold points: {points_after:,} DINO filtered results (structured matches)
+{visualization_info}
 
 📋 Similarity Distribution:
    • Mean: {stats.get('mean', 0):.3f} | Median: {stats.get('median', 0):.3f} | Std: {stats.get('std', 0):.3f}
@@ -1075,9 +1017,9 @@ class InteractiveTextSearch:
                 
             else:
                 # No matches found
-                rr.log("world/text_similarity_highlights", rr.Clear())
-                rr.log("world/clip_semantic_outliers", rr.Clear())
-                rr.log("world/highlighted_mesh", rr.Clear())
+                rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
+                rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
+                rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
                 
                 # Log no results stats
                 rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
@@ -1176,7 +1118,6 @@ class InteractiveTextSearch:
 
 💡 How to search:
    • Type queries in terminal: "chair", "red table", "wooden furniture"
-   • Edit query.txt file in any text editor
    • Adjust settings: "threshold=0.15", "topk=300"
    • Type "help" for more commands
 
@@ -1194,7 +1135,6 @@ class InteractiveTextSearch:
         rr.log("stats/search/top_k", rr.Scalars(200), static=True)
         
         # Start watchers and input
-        file_observer = self.start_file_watcher()
         terminal_thread = self.start_terminal_input()
         
         # Settings
@@ -1205,14 +1145,6 @@ class InteractiveTextSearch:
         current_use_dino_filtering = self.use_dino_filtering
         
         try:
-            # Process initial query from file
-            if self.query_file.exists():
-                with open(self.query_file, 'r') as f:
-                    initial_query = f.read().strip()
-                if initial_query:
-                    print(f"🔍 Processing initial query: '{initial_query}'")
-                    self.process_text_query(initial_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-            
             # Main processing loop
             print("🚀 Interactive session started! Use Rerun viewer to see results.")
             
@@ -1261,11 +1193,6 @@ class InteractiveTextSearch:
                         self.current_query = query
                         self.process_text_query(query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
                         
-                        # Update query file if query came from terminal
-                        if source == "terminal" and query:
-                            with open(self.query_file, 'w') as f:
-                                f.write(query + '\n')
-                    
                 except queue.Empty:
                     continue
                 except KeyboardInterrupt:
@@ -1275,122 +1202,4 @@ class InteractiveTextSearch:
             print("\n⏹️  Interactive session interrupted")
         finally:
             self.running = False
-            file_observer.stop()
-            file_observer.join()
-            print("🛑 Interactive session ended")
-
-def main():
-    parser = argparse.ArgumentParser(description="Interactive Text Search for Featurized Pointclouds with Hybrid CLIP+DINO Filtering")
-    parser.add_argument("pointcloud_dir", help="Directory containing featurized pointcloud .pt files")
-    parser.add_argument("--file-type", default="combined", help="Which .pt file to use")
-    parser.add_argument("--port", type=int, default=9878, help="Rerun server port")
-    parser.add_argument("--clip-model", default="ViT-B/32", choices=["ViT-B/32", "ViT-L/14"], 
-                       help="CLIP model version")
-    parser.add_argument("--create-mesh", action="store_true", default=True,
-                       help="Create ball_pivoting mesh for better visualization (default: True)")
-    parser.add_argument("--no-mesh", action="store_true",
-                       help="Disable mesh creation for faster loading")
-    
-    # Statistical outlier detection options
-    parser.add_argument("--outlier-method", default="adaptive", 
-                       choices=["iqr", "percentile", "z_score", "adaptive", "combined"],
-                       help="Statistical outlier detection method (default: adaptive)")
-    parser.add_argument("--use-traditional", action="store_true",
-                       help="Use traditional fixed threshold method instead of statistical outliers")
-    
-    # DINO filtering options
-    parser.add_argument("--no-dino-filtering", action="store_true",
-                       help="Disable DINO structural filtering (use CLIP-only)")
-    
-    args = parser.parse_args()
-    
-    # Handle mesh creation flag
-    create_mesh = args.create_mesh and not args.no_mesh
-    
-    # Handle outlier detection settings
-    use_statistical_outliers = not args.use_traditional
-    
-    # Handle DINO filtering setting
-    use_dino_filtering = not args.no_dino_filtering
-    
-    # Discover files
-    try:
-        files_info = discover_featurized_files(args.pointcloud_dir)
-        print("📁 Available files:")
-        for key, path in files_info.items():
-            print(f"   {key}: {os.path.basename(path)}")
-    except Exception as e:
-        print(f"❌ Error discovering files: {e}")
-        return
-    
-    # Validate file selection
-    if args.file_type not in files_info:
-        print(f"❌ File type '{args.file_type}' not found.")
-        print(f"Available options: {list(files_info.keys())}")
-        return
-    
-    # Check CLIP encoder availability
-    if not HAS_CLIP_ENCODER:
-        print("❌ CLIP encoder not available. This script requires CLIP functionality.")
-        return
-    
-    # Check mesh creation capability
-    if create_mesh and not HAS_OPEN3D:
-        print("⚠️  Open3D not available. Disabling mesh creation.")
-        create_mesh = False
-    
-    # Start interactive session
-    try:
-        interactive_search = InteractiveTextSearch(
-            files_info, 
-            args.file_type, 
-            args.clip_model,
-            create_mesh=create_mesh,
-            outlier_method=args.outlier_method,
-            use_statistical_outliers=use_statistical_outliers,
-            use_dino_filtering=use_dino_filtering
-        )
-        
-        print("\n" + "="*80)
-        print("🎯 ENHANCED INTERACTIVE TEXT SEARCH WITH HYBRID CLIP+DINO FILTERING")
-        print("="*80)
-        
-        if use_dino_filtering:
-            print("🔗 Hybrid CLIP+DINO filtering enabled")
-            print("💡 Benefits:")
-            print("   • CLIP: Semantic understanding (finds 'chair', 'red table')")
-            print("   • DINO: Structural coherence (filters scattered points)")
-            print("   • Result: Clean object boundaries instead of noise")
-            print("   • Visualization: Blue points (CLIP semantic) + Gold points (DINO filtered)")
-        elif use_statistical_outliers:
-            print("📈 Statistical CLIP-only outlier detection enabled")
-            print(f"   Method: {args.outlier_method}")
-            print("💡 Benefits:")
-            print("   • Automatically adapts to object size (apple vs Christmas tree)")
-            print("   • No manual threshold tuning required")
-            print("   • More robust results across different queries")
-        else:
-            print("🎯 Traditional fixed threshold method enabled")
-            print("💡 Use statistical or hybrid mode for better results")
-        
-        if create_mesh:
-            print("🔺 Mesh creation enabled - ball_pivoting method for better visualization")
-        else:
-            print("📊 Point cloud only mode - faster loading, no mesh")
-        
-        print("\n🎮 Interactive Commands:")
-        print("   • Type queries: 'chair', 'red table', 'wooden furniture'")
-        if use_dino_filtering:
-            print("   • Toggle methods: 'use_dino_filtering=false' (CLIP-only)")
-        print("   • Switch outlier detection: 'outlier_method=iqr'")
-        print("   • Traditional settings: 'threshold=0.15', 'topk=300'")
-        print("   • Help: 'help'")
-        print("="*80 + "\n")
-            
-        interactive_search.run_interactive_session(args.port)
-    except Exception as e:
-        print(f"❌ Error starting interactive session: {e}")
-        raise
-
-if __name__ == "__main__":
-    main() 
+            print("🛑 Interactive session ended") 

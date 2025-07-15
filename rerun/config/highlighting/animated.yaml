@@ -1,8 +1,0 @@
-# @package _global_
-# Animated highlighting for dynamic visualizations
-
-highlighting:
-  enable: true
-  mode: "spatial_clusters"
-  animate: true
-  animation_duration: 60.0 
