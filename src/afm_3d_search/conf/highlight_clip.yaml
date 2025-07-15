@@ -1,0 +1,14 @@
+# conf/highlight_clip.yaml
+
+defaults:
+  - _self_
+  - paths: default
+  - models: default
+
+paths:
+  # ❗️IMPORTANT: Change this to the actual output directory of your generation run
+  input_run_dir: "outputs/YYYY-MM-DD/HH-MM-SS"
+
+# Parameters specific to this script
+text_query: "bed"
+top_k: 5000

@@ -1,12 +1,27 @@
+# .gitignore
+
+# OS-generated files
 .DS_Store
 __pycache__/
+*.pyc
+.venv/
+
+# Project-specific Ignores
 *.rrd
 *.log
 logs/
 weights/
-
-.venv/
-*.pyc
-
-data/
 temp_uploads/
+sam_vit_h_4b8939.pth # Ignore downloaded model checkpoints
+
+# Hydra Output
+outputs/
+multirun/
+
+# Data Handling
+data/output/
+
+# Python Build Artifacts
+build/
+dist/
+*.egg-info/

@@ -1,0 +1,5 @@
+# conf/processing/high_res.yaml
+conf_percentile: 5.0  # Be more strict
+voxel_size: 0.005     # Use smaller voxels
+dino_batch_size: 2    # Smaller batch for more memory
+clip_batch_size: 1

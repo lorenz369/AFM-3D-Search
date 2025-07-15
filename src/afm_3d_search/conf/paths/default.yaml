@@ -1,0 +1,3 @@
+# conf/paths/default.yaml
+image_folder: "data/input/bude/images"
+output_dir: "outputs/${run_name}"
