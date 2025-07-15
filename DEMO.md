@@ -2,17 +2,22 @@
 
 ---
 
-## ⚙️ Setup
+## ⚙️  Setup
 
 ```
 # 1. Install uv (a fast Python package installer)
-curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 
 # 2. Create venv and install dependencies
 uv venv
 source .venv/bin/activate
 uv pip install -e .
+
+# 3. install vggt
+cd submodules/vggt
+uv pip install -e .
+cd ../..
 ```
 
 ## 🚀 Usage
