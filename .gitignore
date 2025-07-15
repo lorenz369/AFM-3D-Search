@@ -4,3 +4,9 @@ __pycache__/
 *.log
 logs/
 weights/
+
+.venv/
+*.pyc
+
+data/
+temp_uploads/
