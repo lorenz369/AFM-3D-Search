@@ -1,0 +1,4 @@
+- pointcloud_dir=locate-3d/cache/ARKitScenes/
+- file_type=42444821
+- rendering.create_mesh=true
+- original_pointcloud_path=locate-3d/locate3d_data/dataset/arkitscenes/raw/Training/42444821/42444821_3dod_mesh.ply

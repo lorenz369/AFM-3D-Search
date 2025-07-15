@@ -1,0 +1,2 @@
+- pointcloud_dir=locate-3d/cache/ARKitScenes/45261495_combined.pt
+- rendering.create_mesh=true

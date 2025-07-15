@@ -32,6 +32,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import socket
 import json
+import open3d as o3d
 
 # Import visualization functions
 from visualize_featurized_pointcloud import (
@@ -280,104 +281,128 @@ def create_statistical_text_similarity_highlights(points, clip_features, text_qu
     
     return outlier_indices, highlight_points, highlight_colors, similarities, outlier_stats
 
-def cluster_points_by_dino_features(points, dino_features, indices, n_clusters='auto', 
-                                   spatial_weight=0.3, min_cluster_size=10):
+def cluster_points_by_dino_features(
+    points,
+    dino_features,
+    indices,
+    method='dbscan',  # 'dbscan' or 'kmeans'
+    n_clusters='auto',
+    eps=0.3,
+    min_samples=10,
+    spatial_weight=0.3,
+    min_cluster_size=10
+):
     """
     Cluster points based on DINO features to identify coherent structures.
-    
+
     Args:
         points: numpy array [N, 3] - 3D point coordinates
         dino_features: numpy array [N, D] - DINO features for all points
         indices: numpy array - indices of points to cluster (e.g., CLIP outliers)
-        n_clusters: int or 'auto' - number of clusters
-        spatial_weight: float - weight for spatial coordinates in clustering
-        min_cluster_size: int - minimum points per cluster to keep
-    
+        method: 'dbscan' or 'kmeans'
+        n_clusters: int or 'auto' - for KMeans only
+        eps: float - DBSCAN epsilon (neighborhood size)
+        min_samples: int - DBSCAN min samples per cluster
+        spatial_weight: float - weight for spatial coordinates
+        min_cluster_size: int - minimum size of clusters to keep
+
     Returns:
-        filtered_indices: indices of points in the largest/best clusters
-        cluster_info: dictionary with clustering information
+        filtered_indices: np.array of selected indices
+        cluster_info: dict with metadata
     """
-    
     if len(indices) < min_cluster_size:
         return indices, {'method': 'too_few_points', 'n_clusters': 0}
-    
-    # Extract features and coordinates for selected points
+
     selected_points = points[indices]
     selected_dino_features = dino_features[indices]
-    
-    # Normalize spatial coordinates to [0,1] range
+
+    # Normalize spatial
     spatial_range = selected_points.max(axis=0) - selected_points.min(axis=0)
-    spatial_range[spatial_range == 0] = 1  # Avoid division by zero
+    spatial_range[spatial_range == 0] = 1
     normalized_spatial = (selected_points - selected_points.min(axis=0)) / spatial_range
-    
-    # Normalize DINO features
-    normalized_dino = selected_dino_features / (np.linalg.norm(selected_dino_features, axis=1, keepdims=True) + 1e-8)
-    
-    # Combine spatial and feature information
+
+    # Normalize DINO
+    normalized_dino = selected_dino_features / (
+        np.linalg.norm(selected_dino_features, axis=1, keepdims=True) + 1e-8
+    )
+
+    # Combine features
     combined_features = np.concatenate([
         normalized_dino,
         normalized_spatial * spatial_weight
     ], axis=1)
-    
-    # Determine number of clusters
-    if n_clusters == 'auto':
-        # Use elbow method or estimate based on data size
-        n_clusters = min(max(2, len(indices) // 20), 8)
-    
+
     try:
-        from sklearn.cluster import KMeans
-        from sklearn.metrics import silhouette_score
-        
-        # Try different cluster numbers and pick best
-        best_clusters = 2
-        best_score = -1
-        
-        for k in range(2, min(n_clusters + 1, len(indices) // min_cluster_size + 1)):
-            if k >= len(indices):
-                break
-                
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        if method == 'dbscan':
+            from sklearn.cluster import DBSCAN
+
+            dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+            cluster_labels = dbscan.fit_predict(combined_features)
+            valid_mask = cluster_labels != -1
+            filtered_indices = indices[valid_mask]
+
+            unique_labels = np.unique(cluster_labels[valid_mask])
+            cluster_info = {
+                'method': 'dbscan',
+                'eps': eps,
+                'min_samples': min_samples,
+                'clusters_found': len(unique_labels),
+                'points_filtered': len(indices) - len(filtered_indices),
+                'spatial_weight': spatial_weight
+            }
+            return filtered_indices, cluster_info
+
+        elif method == 'kmeans':
+            from sklearn.cluster import KMeans
+            from sklearn.metrics import silhouette_score
+
+            if n_clusters == 'auto':
+                n_clusters = min(max(2, len(indices) // 20), 8)
+
+            best_clusters = 2
+            best_score = -1
+            for k in range(2, min(n_clusters + 1, len(indices) // min_cluster_size + 1)):
+                if k >= len(indices):
+                    break
+                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+                labels = kmeans.fit_predict(combined_features)
+                if len(np.unique(labels)) > 1:
+                    score = silhouette_score(combined_features, labels)
+                    if score > best_score:
+                        best_score = score
+                        best_clusters = k
+
+            # Final fit
+            kmeans = KMeans(n_clusters=best_clusters, random_state=42, n_init=10)
             cluster_labels = kmeans.fit_predict(combined_features)
-            
-            if len(np.unique(cluster_labels)) > 1:
-                score = silhouette_score(combined_features, cluster_labels)
-                if score > best_score:
-                    best_score = score
-                    best_clusters = k
-        
-        # Final clustering with best number of clusters
-        kmeans = KMeans(n_clusters=best_clusters, random_state=42, n_init=10)
-        cluster_labels = kmeans.fit_predict(combined_features)
-        
-        # Find largest clusters that meet minimum size requirement
-        unique_labels, counts = np.unique(cluster_labels, return_counts=True)
-        valid_clusters = unique_labels[counts >= min_cluster_size]
-        
-        if len(valid_clusters) == 0:
-            # If no clusters meet size requirement, return largest cluster
-            largest_cluster = unique_labels[np.argmax(counts)]
-            cluster_mask = cluster_labels == largest_cluster
+
+            unique_labels, counts = np.unique(cluster_labels, return_counts=True)
+            valid_clusters = unique_labels[counts >= min_cluster_size]
+
+            if len(valid_clusters) == 0:
+                largest_cluster = unique_labels[np.argmax(counts)]
+                cluster_mask = cluster_labels == largest_cluster
+            else:
+                top_clusters = valid_clusters[np.argsort(counts[np.isin(unique_labels, valid_clusters)])[-3:]]
+                cluster_mask = np.isin(cluster_labels, top_clusters)
+
+            filtered_indices = indices[cluster_mask]
+
+            cluster_info = {
+                'method': 'kmeans',
+                'n_clusters': best_clusters,
+                'silhouette_score': best_score,
+                'clusters_kept': len(np.unique(cluster_labels[cluster_mask])),
+                'points_filtered': len(indices) - len(filtered_indices),
+                'spatial_weight': spatial_weight
+            }
+            return filtered_indices, cluster_info
+
         else:
-            # Take all valid clusters (or top 2-3 largest)
-            top_clusters = valid_clusters[np.argsort(counts[np.isin(unique_labels, valid_clusters)])[-3:]]
-            cluster_mask = np.isin(cluster_labels, top_clusters)
-        
-        filtered_indices = indices[cluster_mask]
-        
-        cluster_info = {
-            'method': 'kmeans',
-            'n_clusters': best_clusters,
-            'silhouette_score': best_score,
-            'clusters_kept': len(np.unique(cluster_labels[cluster_mask])),
-            'points_filtered': len(indices) - len(filtered_indices),
-            'spatial_weight': spatial_weight
-        }
-        
-        return filtered_indices, cluster_info
-        
+            raise ValueError(f"Unknown clustering method: {method}")
+
     except ImportError:
-        print("⚠️  scikit-learn not available for clustering, using spatial fallback")
-        # Fallback: spatial density-based filtering
+        print("⚠️  scikit-learn not available. Falling back to spatial density filter.")
         return spatial_density_filter(points, indices, min_cluster_size), {'method': 'spatial_fallback'}
 
 def spatial_density_filter(points, indices, min_neighbors=5, radius_factor=0.02):
@@ -561,7 +586,7 @@ class InteractiveTextSearch:
     """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering."""
     
     def __init__(self, files_info, file_key, clip_model_version="ViT-B/32", create_mesh=True, 
-                 outlier_method='adaptive', use_statistical_outliers=True, use_dino_filtering=True):
+                 outlier_method='adaptive', use_statistical_outliers=True, use_dino_filtering=True, original_pointcloud_path=None):
         self.files_info = files_info
         self.file_key = file_key
         self.clip_model_version = clip_model_version
@@ -569,7 +594,8 @@ class InteractiveTextSearch:
         self.outlier_method = outlier_method
         self.use_statistical_outliers = use_statistical_outliers
         self.use_dino_filtering = use_dino_filtering
-        
+        self.original_pointcloud_path = original_pointcloud_path
+
         # Load data once
         print("🔄 Loading pointcloud data...")
         self.points, self.rgb, self.features_info = load_featurized_pointcloud(files_info[file_key])
@@ -789,7 +815,6 @@ class InteractiveTextSearch:
     
     def process_text_query(self, query, top_k=200, threshold=0.2, outlier_method=None, use_statistical_outliers=None, use_dino_filtering=None):
         """Process a text query and return highlights using statistical or traditional methods."""
-        
         # Use instance defaults if not specified
         if outlier_method is None:
             outlier_method = self.outlier_method
@@ -805,12 +830,13 @@ class InteractiveTextSearch:
             rr.log("world/highlighted_mesh", rr.Clear())
             
             # Clear search stats with better formatting
-            rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
-            rr.log("stats/search/num_results", rr.Scalars(0))
-            rr.log("stats/search/top_similarity", rr.Scalars(0.0))
-            rr.log("stats/search/mean_similarity", rr.Scalars(0.0))
-            rr.log("stats/search/threshold", rr.Scalars(threshold))
-            rr.log("stats/search/detection_method", rr.TextLog("None"))
+            # rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
+            # rr.log("stats/search/num_results", rr.Scalars(0))
+            # rr.log("stats/search/top_similarity", rr.Scalars(0.0))
+            # rr.log("stats/search/mean_similarity", rr.Scalars(0.0))
+            # rr.log("stats/search/threshold", rr.Scalars(threshold))
+            # rr.log("stats/search/detection_method", rr.TextLog("None"))
+
             return
         
         try:
@@ -958,41 +984,46 @@ class InteractiveTextSearch:
                         print(f"⚠️  Could not create highlighted mesh: {e}")
                 
                 # Log comprehensive search statistics with outlier info
-                rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}'", level=rr.TextLogLevel.INFO))
-                rr.log("stats/search/num_results", rr.Scalars(len(highlight_points)))
-                rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max())))
-                rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean())))
-                rr.log("stats/search/threshold", rr.Scalars(display_threshold))
-                rr.log("stats/search/detection_method", rr.TextLog(method_used))
+                # rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}'", level=rr.TextLogLevel.INFO))
+                # rr.log("stats/search/num_results", rr.Scalars(len(highlight_points)))
+                # rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max())))
+                # rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean())))
+                # rr.log("stats/search/threshold", rr.Scalars(display_threshold))
+                # rr.log("stats/search/detection_method", rr.TextLog(method_used))
                 
                 if use_statistical_outliers and self.last_outlier_stats:
                     # Log detailed statistical outlier information
                     stats = self.last_outlier_stats
-                    rr.log("stats/outliers/mean_similarity", rr.Scalars(float(stats.get('mean', 0))))
-                    rr.log("stats/outliers/median_similarity", rr.Scalars(float(stats.get('median', 0))))
-                    rr.log("stats/outliers/std_similarity", rr.Scalars(float(stats.get('std', 0))))
-                    rr.log("stats/outliers/iqr", rr.Scalars(float(stats.get('iqr', 0))))
-                    rr.log("stats/outliers/q25", rr.Scalars(float(stats.get('q25', 0))))
-                    rr.log("stats/outliers/q75", rr.Scalars(float(stats.get('q75', 0))))
-                    rr.log("stats/outliers/outlier_percentage", rr.Scalars(float(stats.get('outlier_percentage', 0))))
+                    # rr.log("stats/outliers/mean_similarity", rr.Scalars(float(stats.get('mean', 0))))
+                    # rr.log("stats/outliers/median_similarity", rr.Scalars(float(stats.get('median', 0))))
+                    # rr.log("stats/outliers/std_similarity", rr.Scalars(float(stats.get('std', 0))))
+                    # rr.log("stats/outliers/iqr", rr.Scalars(float(stats.get('iqr', 0))))
+                    # rr.log("stats/outliers/q25", rr.Scalars(float(stats.get('q25', 0))))
+                    # rr.log("stats/outliers/q75", rr.Scalars(float(stats.get('q75', 0))))
+                    # rr.log("stats/outliers/outlier_percentage", rr.Scalars(float(stats.get('outlier_percentage', 0))))
                     
                     # Log parameters used for optimization
                     if 'iqr_multiplier' in stats:
-                        rr.log("stats/outliers/param_iqr_multiplier", rr.Scalars(float(stats.get('iqr_multiplier'))))
+                        # rr.log("stats/outliers/param_iqr_multiplier", rr.Scalars(float(stats.get('iqr_multiplier'))))
+                        pass # Commented out to disable stats logging
                     if 'percentile_threshold' in stats:
-                        rr.log("stats/outliers/param_percentile_threshold", rr.Scalars(float(stats.get('percentile_threshold'))))
+                        # rr.log("stats/outliers/param_percentile_threshold", rr.Scalars(float(stats.get('percentile_threshold'))))
+                        pass # Commented out to disable stats logging
                     if 'z_score_threshold' in stats:
-                        rr.log("stats/outliers/param_z_score_threshold", rr.Scalars(float(stats.get('z_score_threshold'))))
+                        # rr.log("stats/outliers/param_z_score_threshold", rr.Scalars(float(stats.get('z_score_threshold'))))
+                        pass # Commented out to disable stats logging
 
                     # Log DINO filtering info if used
                     if stats.get('dino_filtering_enabled', False):
-                        rr.log("stats/outliers/dino_enabled", rr.Scalars(1))
-                        rr.log("stats/outliers/points_before_dino", rr.Scalars(float(stats.get('points_before_dino', 0))))
-                        rr.log("stats/outliers/points_after_dino", rr.Scalars(float(stats.get('points_after_dino', 0))))
-                        dino_reduction = ((stats.get('points_before_dino', 0) - stats.get('points_after_dino', 0)) / max(stats.get('points_before_dino', 1), 1)) * 100
-                        rr.log("stats/outliers/dino_reduction_percent", rr.Scalars(float(dino_reduction)))
+                        # rr.log("stats/outliers/dino_enabled", rr.Scalars(1))
+                        # rr.log("stats/outliers/points_before_dino", rr.Scalars(float(stats.get('points_before_dino', 0))))
+                        # rr.log("stats/outliers/points_after_dino", rr.Scalars(float(stats.get('points_after_dino', 0))))
+                        # dino_reduction = ((stats.get('points_before_dino', 0) - stats.get('points_after_dino', 0)) / max(stats.get('points_before_dino', 1), 1)) * 100
+                        # rr.log("stats/outliers/dino_reduction_percent", rr.Scalars(float(dino_reduction)))
+                        pass # Commented out to disable stats logging
                     else:
-                        rr.log("stats/outliers/dino_enabled", rr.Scalars(0))
+                        # rr.log("stats/outliers/dino_enabled", rr.Scalars(0))
+                        pass # Commented out to disable stats logging
                     
                     # Create detailed statistical summary with DINO info
                     dino_info = ""
@@ -1080,12 +1111,12 @@ class InteractiveTextSearch:
                 rr.log("world/highlighted_mesh", rr.Clear())
                 
                 # Log no results stats
-                rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
-                rr.log("stats/search/num_results", rr.Scalars(0))
-                rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max()) if len(similarities) > 0 else 0.0))
-                rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean()) if len(similarities) > 0 else 0.0))
-                rr.log("stats/search/threshold", rr.Scalars(display_threshold))
-                rr.log("stats/search/detection_method", rr.TextLog(method_used))
+                # rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
+                # rr.log("stats/search/num_results", rr.Scalars(0))
+                # rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max()) if len(similarities) > 0 else 0.0))
+                # rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean()) if len(similarities) > 0 else 0.0))
+                # rr.log("stats/search/threshold", rr.Scalars(display_threshold))
+                # rr.log("stats/search/detection_method", rr.TextLog(method_used))
                 
                 method_desc = "statistical" if use_statistical_outliers else "traditional"
                 no_match_summary = f"""⚠️  NO MATCHES FOR: '{query}' ({method_desc} method)
@@ -1121,7 +1152,28 @@ class InteractiveTextSearch:
         rr.log("world/pointcloud_rgb", 
                rr.Points3D(self.points, colors=self.rgb, radii=0.008), 
                static=True)
-        
+        # ─────────────────────────────────────────────────────────────────────────────
+        # 🔍 Load and log original pointcloud if provided
+        # ─────────────────────────────────────────────────────────────────────────────
+        if self.original_pointcloud_path and self.points is not None:
+            print(f"🔍 Logging original pointcloud from {self.original_pointcloud_path}...")
+            try:
+                pcd = o3d.io.read_point_cloud(self.original_pointcloud_path)
+                # Get positions
+                original_points = np.asarray(pcd.points)  # Fixed: use different variable name
+                # Optional: get colors (if available)
+                if pcd.has_colors():
+                    original_colors = np.asarray(pcd.colors)
+                else:
+                    original_colors = np.ones_like(original_points) * 0.8  # Gray fallback
+                # Log to Rerun
+                rr.log("world/dense_original_pointcloud", rr.Points3D(positions=original_points, colors=original_colors, radii=0.01))
+                print(f"✅ Original pointcloud logged: {len(original_points)} points")
+            except Exception as e:
+                print(f"❌ Error loading original pointcloud from {self.original_pointcloud_path}: {e}")
+                print("   Continuing without original pointcloud...")
+
+
         # Log base mesh if available
         if self.base_mesh_vertices is not None and self.base_mesh_faces is not None:
             print("🔺 Logging base mesh...")
@@ -1150,16 +1202,17 @@ class InteractiveTextSearch:
         bbox_max = self.points.max(axis=0)
         bbox_size = bbox_max - bbox_min
         
-        rr.log("stats/pointcloud/total_points", rr.Scalars(len(self.points)), static=True)
-        rr.log("stats/pointcloud/clip_feature_dim", rr.Scalars(self.features_info['clip'].shape[1]), static=True)
-        rr.log("stats/pointcloud/bbox_size_x", rr.Scalars(float(bbox_size[0])), static=True)
-        rr.log("stats/pointcloud/bbox_size_y", rr.Scalars(float(bbox_size[1])), static=True)
-        rr.log("stats/pointcloud/bbox_size_z", rr.Scalars(float(bbox_size[2])), static=True)
-        rr.log("stats/pointcloud/bbox_volume", rr.Scalars(float(np.prod(bbox_size))), static=True)
+        # rr.log("stats/pointcloud/total_points", rr.Scalars(len(self.points)), static=True)
+        # rr.log("stats/pointcloud/clip_feature_dim", rr.Scalars(self.features_info['clip'].shape[1]), static=True)
+        # rr.log("stats/pointcloud/bbox_size_x", rr.Scalars(float(bbox_size[0])), static=True)
+        # rr.log("stats/pointcloud/bbox_size_y", rr.Scalars(float(bbox_size[1])), static=True)
+        # rr.log("stats/pointcloud/bbox_size_z", rr.Scalars(float(bbox_size[2])), static=True)
+        # rr.log("stats/pointcloud/bbox_volume", rr.Scalars(float(np.prod(bbox_size))), static=True)
         
         if self.base_mesh_vertices is not None:
-            rr.log("stats/pointcloud/mesh_vertices", rr.Scalars(len(self.base_mesh_vertices)), static=True)
-            rr.log("stats/pointcloud/mesh_faces", rr.Scalars(len(self.base_mesh_faces)), static=True)
+            # rr.log("stats/pointcloud/mesh_vertices", rr.Scalars(len(self.base_mesh_vertices)), static=True)
+            # rr.log("stats/pointcloud/mesh_faces", rr.Scalars(len(self.base_mesh_faces)), static=True)
+            pass  # Commented out to disable stats logging
         
         # Create a comprehensive pointcloud summary
         mesh_info = ""
@@ -1188,10 +1241,10 @@ class InteractiveTextSearch:
         rr.log("docs/instructions", rr.TextLog(pointcloud_summary, level=rr.TextLogLevel.INFO), static=True)
         
         # Initialize search stats structure
-        rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO), static=True)
-        rr.log("stats/search/num_results", rr.Scalars(0), static=True)
-        rr.log("stats/search/threshold", rr.Scalars(0.2), static=True)
-        rr.log("stats/search/top_k", rr.Scalars(200), static=True)
+        # rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO), static=True)
+        # rr.log("stats/search/num_results", rr.Scalars(0), static=True)
+        # rr.log("stats/search/threshold", rr.Scalars(0.2), static=True)
+        # rr.log("stats/search/top_k", rr.Scalars(200), static=True)
         
         # Start watchers and input
         file_observer = self.start_file_watcher()
@@ -1290,6 +1343,9 @@ def main():
                        help="Create ball_pivoting mesh for better visualization (default: True)")
     parser.add_argument("--no-mesh", action="store_true",
                        help="Disable mesh creation for faster loading")
+    parser.add_argument("--original-pointcloud-path", type=str, default=None,
+                    help="Path to original .ply pointcloud (optional)")
+
     
     # Statistical outlier detection options
     parser.add_argument("--outlier-method", default="adaptive", 
@@ -1348,7 +1404,9 @@ def main():
             create_mesh=create_mesh,
             outlier_method=args.outlier_method,
             use_statistical_outliers=use_statistical_outliers,
-            use_dino_filtering=use_dino_filtering
+            use_dino_filtering=use_dino_filtering,
+            original_pointcloud_path=args.original_pointcloud_path
+
         )
         
         print("\n" + "="*80)
