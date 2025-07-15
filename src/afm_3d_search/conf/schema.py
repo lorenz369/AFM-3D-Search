@@ -5,8 +5,9 @@ from typing import List
 
 @dataclass
 class PathsConfig:
-    run_output_dir: str # The directory for the main generation run
-    output_dir: str     # The directory for validation scripts
+    image_folder: str 
+    output_dir: str
+    input_run_dir: str 
 
 @dataclass
 class ProcessingConfig:

@@ -9,12 +9,18 @@
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 
-# 2. Create venv and install dependencies
+# 2. Clone Repo
+git clone https://github.com/lorenz369/AFM-3D-Search.git
+git switch feat/add-scene-processing-endpoint
+cd AFM-3D-Search/
+git submodule update --init --recursive
+
+# 3. Create venv and install dependencies
 uv venv
 source .venv/bin/activate
 uv pip install -e .
 
-# 3. install vggt
+# 4. install vggt
 cd submodules/vggt
 uv pip install -e .
 cd ../..

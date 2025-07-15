@@ -1,4 +1,4 @@
-# src/afm_3d_search/conf/config.yaml
+# conf/config.yaml
 
 defaults:
   - _self_
@@ -6,5 +6,4 @@ defaults:
   - models: default
   - processing: default
 
-# A name for this specific run, used to create the output folder.
 run_name: "bude_scan_v1"

@@ -151,26 +151,12 @@ def extract_clip_features(image_paths, clip_version, sam_checkpoint, target_heig
 # ## CORE SCRIPT LOGIC
 # ##################################################################################
 
-# Mock VGGT classes if the real ones are not available
-try:
-    from vggt.models.vggt import VGGT
-    from vggt.utils.load_fn import load_and_preprocess_images
-    from vggt.utils.pose_enc import pose_encoding_to_extri_intri
-    from vggt.utils.geometry import unproject_depth_map_to_point_map
-except ImportError:
-    print("⚠️ VGGT library not found. Using mock classes for demonstration.")
-    class VGGT(torch.nn.Module):
-        def __init__(self): super().__init__()
-        def forward(self, x):
-            B, S, C, H, W = x.shape
-            return {
-                "images": x, "depth": torch.rand(B, S, H, W, device=x.device),
-                "depth_conf": torch.rand(B, S, H, W, device=x.device),
-                "pose_enc": torch.rand(B, S, 12, device=x.device),
-            }
-    def load_and_preprocess_images(paths): return torch.rand(1, len(paths), 3, 224, 224)
-    def pose_encoding_to_extri_intri(pose, shape): return torch.rand(1, 1, 4, 4), torch.rand(1, 1, 3, 3)
-    def unproject_depth_map_to_point_map(depth, ext, intr): return np.random.rand(depth.shape[0], depth.shape[1], depth.shape[2], 3)
+
+from vggt.models.vggt import VGGT
+from vggt.utils.load_fn import load_and_preprocess_images
+from vggt.utils.pose_enc import pose_encoding_to_extri_intri
+from vggt.utils.geometry import unproject_depth_map_to_point_map
+
 
 def aggregate_points_and_features(points, colors, features_dict, voxel_size):
     """Aggregates points, colors, and features that fall into the same voxel."""
