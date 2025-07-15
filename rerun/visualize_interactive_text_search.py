@@ -721,6 +721,34 @@ class InteractiveTextSearch:
         print("  • use_statistical_outliers=false - Switch to traditional")
         print("  • threshold=0.15            - Lower traditional threshold")
         print("="*70 + "\n")
+
+    def _log_readable_stats(self, query, num_results, threshold, method_used, stats=None):
+        """
+        Log a compact bullet-list summary of the latest search statistics to a dedicated
+        `TextLog` entity so it appears as a tidy, readable panel in the Rerun viewer.
+        """
+        lines = [
+            f"• Query: '{query}'" if query else "• Query: <none>",
+            f"• Results: {num_results:,}",
+            f"• Threshold: {threshold:.3f}",
+            f"• Method: {method_used}",
+        ]
+        if stats:
+            if 'mean' in stats:
+                lines.append(f"• Mean sim: {stats['mean']:.3f}")
+            if 'std' in stats:
+                lines.append(f"• Std sim: {stats['std']:.3f}")
+            if 'outlier_percentage' in stats:
+                lines.append(f"• Outlier %: {stats['outlier_percentage']:.1f}")
+        summary = "\n".join(lines)
+        # Use `static=True` so this appears as a timeless text panel rather than a
+        # densely stacked time-series.
+        rr.log("stats/search/readable", rr.TextLog(summary, level=rr.TextLogLevel.INFO), static=True)
+
+    def _log_stat_text(self, path: str, value):
+        """Log a single numeric/statistic value as a timeless TextLog so it doesn’t
+        generate a time-series chart."""
+        rr.log(path, rr.TextLog(str(value), level=rr.TextLogLevel.INFO), static=True)
     
     def process_text_query(self, query, top_k=200, threshold=0.2, outlier_method=None, use_statistical_outliers=None, use_dino_filtering=None):
         """Process a text query and return highlights using statistical or traditional methods."""
@@ -741,10 +769,10 @@ class InteractiveTextSearch:
             
             # Clear search stats with better formatting
             rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
-            rr.log("stats/search/num_results", rr.Scalars(0))
-            rr.log("stats/search/top_similarity", rr.Scalars(0.0))
-            rr.log("stats/search/mean_similarity", rr.Scalars(0.0))
-            rr.log("stats/search/threshold", rr.Scalars(threshold))
+            self._log_stat_text("stats/search/num_results", 0)
+            self._log_stat_text("stats/search/top_similarity", 0.0)
+            self._log_stat_text("stats/search/mean_similarity", 0.0)
+            self._log_stat_text("stats/search/threshold", threshold)
             rr.log("stats/search/detection_method", rr.TextLog("None"))
             return
         
@@ -894,48 +922,39 @@ class InteractiveTextSearch:
                 
                 # Log comprehensive search statistics with outlier info
                 rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}'", level=rr.TextLogLevel.INFO))
-                rr.log("stats/search/num_results", rr.Scalars(len(highlight_points)))
-                rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max())))
-                rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean())))
-                rr.log("stats/search/threshold", rr.Scalars(display_threshold))
+                self._log_stat_text("stats/search/num_results", len(highlight_points))
+                self._log_stat_text("stats/search/top_similarity", round(float(similarities.max()), 4))
+                self._log_stat_text("stats/search/mean_similarity", round(float(similarities.mean()), 4))
+                self._log_stat_text("stats/search/threshold", round(display_threshold, 4))
                 rr.log("stats/search/detection_method", rr.TextLog(method_used))
                 
                 if use_statistical_outliers and self.last_outlier_stats:
-                    # Log detailed statistical outlier information
-                    stats = self.last_outlier_stats
-                    rr.log("stats/outliers/mean_similarity", rr.Scalars(float(stats.get('mean', 0))))
-                    rr.log("stats/outliers/median_similarity", rr.Scalars(float(stats.get('median', 0))))
-                    rr.log("stats/outliers/std_similarity", rr.Scalars(float(stats.get('std', 0))))
-                    rr.log("stats/outliers/iqr", rr.Scalars(float(stats.get('iqr', 0))))
-                    rr.log("stats/outliers/q25", rr.Scalars(float(stats.get('q25', 0))))
-                    rr.log("stats/outliers/q75", rr.Scalars(float(stats.get('q75', 0))))
-                    rr.log("stats/outliers/outlier_percentage", rr.Scalars(float(stats.get('outlier_percentage', 0))))
                     
                     # Log parameters used for optimization
-                    if 'iqr_multiplier' in stats:
-                        rr.log("stats/outliers/param_iqr_multiplier", rr.Scalars(float(stats.get('iqr_multiplier'))))
-                    if 'percentile_threshold' in stats:
-                        rr.log("stats/outliers/param_percentile_threshold", rr.Scalars(float(stats.get('percentile_threshold'))))
-                    if 'z_score_threshold' in stats:
-                        rr.log("stats/outliers/param_z_score_threshold", rr.Scalars(float(stats.get('z_score_threshold'))))
+                    if 'iqr_multiplier' in self.last_outlier_stats:
+                        self._log_stat_text("stats/outliers/param_iqr_multiplier", self.last_outlier_stats['iqr_multiplier'])
+                    if 'percentile_threshold' in self.last_outlier_stats:
+                        self._log_stat_text("stats/outliers/param_percentile_threshold", self.last_outlier_stats['percentile_threshold'])
+                    if 'z_score_threshold' in self.last_outlier_stats:
+                        self._log_stat_text("stats/outliers/param_z_score_threshold", self.last_outlier_stats['z_score_threshold'])
 
                     # Log DINO filtering info if used
-                    if stats.get('dino_filtering_enabled', False):
-                        rr.log("stats/outliers/dino_enabled", rr.Scalars(1))
-                        rr.log("stats/outliers/points_before_dino", rr.Scalars(float(stats.get('points_before_dino', 0))))
-                        rr.log("stats/outliers/points_after_dino", rr.Scalars(float(stats.get('points_after_dino', 0))))
-                        dino_reduction = ((stats.get('points_before_dino', 0) - stats.get('points_after_dino', 0)) / max(stats.get('points_before_dino', 1), 1)) * 100
-                        rr.log("stats/outliers/dino_reduction_percent", rr.Scalars(float(dino_reduction)))
+                    if self.last_outlier_stats.get('dino_filtering_enabled', False):
+                        self._log_stat_text("stats/outliers/dino_enabled", 1)
+                        self._log_stat_text("stats/outliers/points_before_dino", self.last_outlier_stats.get('points_before_dino', 0))
+                        self._log_stat_text("stats/outliers/points_after_dino", self.last_outlier_stats.get('points_after_dino', 0))
+                        dino_reduction = ((self.last_outlier_stats.get('points_before_dino', 0) - self.last_outlier_stats.get('points_after_dino', 0)) / max(self.last_outlier_stats.get('points_before_dino', 1), 1)) * 100
+                        self._log_stat_text("stats/outliers/dino_reduction_percent", round(dino_reduction, 2))
                     else:
-                        rr.log("stats/outliers/dino_enabled", rr.Scalars(0))
+                        self._log_stat_text("stats/outliers/dino_enabled", 0)
                     
                     # Create detailed statistical summary with DINO info
                     visualization_info = ""
                     dino_info = ""
-                    if stats.get('dino_filtering_enabled', False):
-                        dino_cluster_info = stats.get('dino_cluster_info', {})
-                        points_before = stats.get('points_before_dino', 0)
-                        points_after = stats.get('points_after_dino', 0)
+                    if self.last_outlier_stats.get('dino_filtering_enabled', False):
+                        dino_cluster_info = self.last_outlier_stats.get('dino_cluster_info', {})
+                        points_before = self.last_outlier_stats.get('points_before_dino', 0)
+                        points_after = self.last_outlier_stats.get('points_after_dino', 0)
                         reduction_pct = ((points_before - points_after) / max(points_before, 1)) * 100
                         
                         dino_info = f"""
@@ -950,7 +969,7 @@ class InteractiveTextSearch:
    • Blue points: {points_before:,} CLIP semantic outliers (all matches)
    • Gold points: {points_after:,} DINO filtered results (structured matches)"""
                     else:
-                        reason = stats.get('reason', 'unknown')
+                        reason = self.last_outlier_stats.get('reason', 'unknown')
                         dino_info = f"\n🦕 DINO Filtering: Disabled ({reason})"
                         num_results = len(highlight_points)
                         visualization_info = f"""
@@ -959,15 +978,15 @@ class InteractiveTextSearch:
 
                     stats_summary = f"""📊 HYBRID CLIP+DINO ANALYSIS: '{query}'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 Final Results: {len(highlight_points):,} / {len(self.points):,} points ({stats.get('outlier_percentage', 0):.1f}%)
+🎯 Final Results: {len(highlight_points):,} / {len(self.points):,} points ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)
 📈 CLIP Outlier Method: {method_used}
 📊 CLIP Threshold: {display_threshold:.3f} (automatically determined){dino_info}
 {visualization_info}
 
 📋 Similarity Distribution:
-   • Mean: {stats.get('mean', 0):.3f} | Median: {stats.get('median', 0):.3f} | Std: {stats.get('std', 0):.3f}
-   • Q25: {stats.get('q25', 0):.3f} | Q75: {stats.get('q75', 0):.3f} | IQR: {stats.get('iqr', 0):.3f}
-   • Range: {stats.get('min', 0):.3f} - {stats.get('max', 0):.3f}
+   • Mean: {self.last_outlier_stats.get('mean', 0):.3f} | Median: {self.last_outlier_stats.get('median', 0):.3f} | Std: {self.last_outlier_stats.get('std', 0):.3f}
+   • Q25: {self.last_outlier_stats.get('q25', 0):.3f} | Q75: {self.last_outlier_stats.get('q75', 0):.3f} | IQR: {self.last_outlier_stats.get('iqr', 0):.3f}
+   • Range: {self.last_outlier_stats.get('min', 0):.3f} - {self.last_outlier_stats.get('max', 0):.3f}
 
 🎨 Highlighted Range: {similarities[highlight_indices].min():.3f} - {similarities[highlight_indices].max():.3f}
 
@@ -992,6 +1011,18 @@ class InteractiveTextSearch:
                     # Helper to build param string
                     param_str = ""
                     stats = self.last_outlier_stats
+                    # Convert numeric outlier stats to readable TextLogs
+                    for src_key, dst_key in [
+                        ("mean", "mean_similarity"),
+                        ("median", "median_similarity"),
+                        ("std", "std_similarity"),
+                        ("iqr", "iqr"),
+                        ("q25", "q25"),
+                        ("q75", "q75"),
+                        ("outlier_percentage", "outlier_percentage"),
+                    ]:
+                        if src_key in stats:
+                            self._log_stat_text(f"stats/outliers/{dst_key}", round(stats[src_key], 4))
                     if 'iqr_multiplier' in stats:
                         param_str += f", IQR Mult: {stats['iqr_multiplier']}"
                     if 'percentile_threshold' in stats:
@@ -1007,13 +1038,37 @@ class InteractiveTextSearch:
                         print(f"   CLIP outliers: {points_before} → DINO filtered: {points_after}")
                         print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
                         print(f"   Final results: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
+                        # Log compact bullet-list stats panel
+                        self._log_readable_stats(
+                            query,
+                            len(highlight_points),
+                            display_threshold,
+                            method_used,
+                            self.last_outlier_stats
+                        )
                     else:
                         print(f"✨ Statistical outlier search results for '{query}':")
                         print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
                         print(f"   Outliers: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
+                        # Log compact bullet-list stats panel
+                        self._log_readable_stats(
+                            query,
+                            len(highlight_points),
+                            display_threshold,
+                            method_used,
+                            self.last_outlier_stats
+                        )
                 else:
                     print(f"✨ Traditional search results for '{query}':")
                     print(f"   Fixed threshold: {threshold:.3f}, Results: {len(highlight_points)}")
+                    # Log compact bullet-list stats panel
+                    self._log_readable_stats(
+                        query,
+                        len(highlight_points),
+                        display_threshold,
+                        method_used,
+                        self.last_outlier_stats if use_statistical_outliers else None
+                    )
                 
             else:
                 # No matches found
@@ -1023,10 +1078,10 @@ class InteractiveTextSearch:
                 
                 # Log no results stats
                 rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
-                rr.log("stats/search/num_results", rr.Scalars(0))
-                rr.log("stats/search/top_similarity", rr.Scalars(float(similarities.max()) if len(similarities) > 0 else 0.0))
-                rr.log("stats/search/mean_similarity", rr.Scalars(float(similarities.mean()) if len(similarities) > 0 else 0.0))
-                rr.log("stats/search/threshold", rr.Scalars(display_threshold))
+                self._log_stat_text("stats/search/num_results", 0)
+                self._log_stat_text("stats/search/top_similarity", round(float(similarities.max()) if len(similarities) > 0 else 0.0, 4))
+                self._log_stat_text("stats/search/mean_similarity", round(float(similarities.mean()) if len(similarities) > 0 else 0.0, 4))
+                self._log_stat_text("stats/search/threshold", round(display_threshold, 4))
                 rr.log("stats/search/detection_method", rr.TextLog(method_used))
                 
                 method_desc = "statistical" if use_statistical_outliers else "traditional"
@@ -1042,6 +1097,14 @@ class InteractiveTextSearch:
                 
                 print(f"⚠️  No matches found for '{query}' using {method_desc} method")
                 print(f"   Max similarity: {similarities.max():.3f}, Method: {method_used}")
+                # Log compact bullet-list stats panel (no matches)
+                self._log_readable_stats(
+                    query,
+                    0,
+                    display_threshold,
+                    method_used,
+                    self.last_outlier_stats if use_statistical_outliers else None
+                )
                 
         except Exception as e:
             print(f"❌ Error processing query '{query}': {e}")
@@ -1092,16 +1155,17 @@ class InteractiveTextSearch:
         bbox_max = self.points.max(axis=0)
         bbox_size = bbox_max - bbox_min
         
-        rr.log("stats/pointcloud/total_points", rr.Scalars(len(self.points)), static=True)
-        rr.log("stats/pointcloud/clip_feature_dim", rr.Scalars(self.features_info['clip'].shape[1]), static=True)
-        rr.log("stats/pointcloud/bbox_size_x", rr.Scalars(float(bbox_size[0])), static=True)
-        rr.log("stats/pointcloud/bbox_size_y", rr.Scalars(float(bbox_size[1])), static=True)
-        rr.log("stats/pointcloud/bbox_size_z", rr.Scalars(float(bbox_size[2])), static=True)
-        rr.log("stats/pointcloud/bbox_volume", rr.Scalars(float(np.prod(bbox_size))), static=True)
+        # Log the same numerical stats as timeless TextLogs for readability.
+        self._log_stat_text("stats/pointcloud/total_points", len(self.points))
+        self._log_stat_text("stats/pointcloud/clip_feature_dim", self.features_info['clip'].shape[1])
+        self._log_stat_text("stats/pointcloud/bbox_size_x", round(float(bbox_size[0]), 4))
+        self._log_stat_text("stats/pointcloud/bbox_size_y", round(float(bbox_size[1]), 4))
+        self._log_stat_text("stats/pointcloud/bbox_size_z", round(float(bbox_size[2]), 4))
+        self._log_stat_text("stats/pointcloud/bbox_volume", round(float(np.prod(bbox_size)), 4))
         
         if self.base_mesh_vertices is not None:
-            rr.log("stats/pointcloud/mesh_vertices", rr.Scalars(len(self.base_mesh_vertices)), static=True)
-            rr.log("stats/pointcloud/mesh_faces", rr.Scalars(len(self.base_mesh_faces)), static=True)
+            self._log_stat_text("stats/pointcloud/mesh_vertices", len(self.base_mesh_vertices))
+            self._log_stat_text("stats/pointcloud/mesh_faces", len(self.base_mesh_faces))
         
         # Create a comprehensive pointcloud summary
         mesh_info = ""
@@ -1130,9 +1194,10 @@ class InteractiveTextSearch:
         
         # Initialize search stats structure
         rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO), static=True)
-        rr.log("stats/search/num_results", rr.Scalars(0), static=True)
-        rr.log("stats/search/threshold", rr.Scalars(0.2), static=True)
-        rr.log("stats/search/top_k", rr.Scalars(200), static=True)
+        # Readable search defaults
+        self._log_stat_text("stats/search/num_results", 0)
+        self._log_stat_text("stats/search/threshold", 0.2)
+        self._log_stat_text("stats/search/top_k", 200)
         
         # Start watchers and input
         terminal_thread = self.start_terminal_input()
