@@ -85,7 +85,7 @@ salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:0
 
 ## Visualization of Point Clouds
 
-Interactive 3D visualization of MASt3R-SLAM results including PLY point clouds, camera trajectory, keyframes, and depth maps using Rerun SDK.
+Interactive 3D visualization of 3D search results and featurized point clouds using the Rerun SDK.
 
 ### Environment Setup
 
@@ -99,52 +99,89 @@ source .rerun_env/bin/activate
 uv pip install -r environments/rerun_requirements.txt
 ```
 
+---
+
 ### Usage
 
-The visualization script automatically discovers and loads all SLAM results from a directory:
+#### **Interactive Text Search Visualization (Hydra-based)**
+
+The main entry point for interactive semantic search on featurized point clouds is:
 
 ```bash
-# Local visualization (opens Rerun viewer locally)
-python visualize_pointcloud.py <path/to/slam/results/directory>
-
-# Example:
-python visualize_pointcloud.py logs/depth_video2_5_sec_test
+python rerun/run_interactive.py pointcloud_dir=<path/to/featurized/pt/files> file_type=<file_key>
 ```
 
-### Script Options
+- `pointcloud_dir`: Directory containing featurized `.pt` files (REQUIRED).
+- `file_type`: Key or filename (without extension) of the `.pt` file to load (REQUIRED, e.g., `42447230`).
+- You can override any config option via CLI, e.g.:
+  - `rendering.create_mesh=true`
+  - `interactive_search.outlier_method=iqr`
+  - `interactive_search.use_dino_filtering=false`
+  - `server.port=9878`
+  - `server.mode=remote`
+- The default config is in `rerun/config/base_config.yaml`. See that file for all options.
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `slam_dir` | Path to SLAM results directory (positional argument) | Required |
-| `--mode` | Visualization mode: 'serve' or 'save' | `serve` |
-| `--remote-host` | Remote host IP for streaming | None (local) |
-| `--remote-port` | Remote port for streaming | `9876` |
+**Example:**
+```bash
+python rerun/run_interactive.py pointcloud_dir=../data/output/arkit_scenes/raw/featurized/ file_type=42447230
+```
 
-#### Additional Usage Examples
+**Controls (in the terminal window):**
+- Type search queries and press Enter (e.g., `chair`, `red sofa`)
+- Type `clear` to remove highlights
+- Type `q` to quit
+- Type `help` for more commands and options (e.g., change outlier method, enable/disable DINO filtering, set thresholds)
+
+**Advanced CLI overrides:**
+```bash
+python rerun/run_interactive.py pointcloud_dir=... file_type=... interactive_search.outlier_method=percentile rendering.create_mesh=true
+```
+
+#### **Script Options (Hydra config keys):**
+
+| Option                                 | Description                                               | Default (base_config.yaml)         |
+|-----------------------------------------|-----------------------------------------------------------|------------------------------------|
+| `pointcloud_dir`                        | Path to featurized pointcloud `.pt` files                 | `../data/output/arkit_scenes/raw/featurized/` |
+| `file_type`                             | Key/filename (no extension) of `.pt` file to load         | `"42447230"`                      |
+| `original_pointcloud`                   | Path to original PLY pointcloud for reference             | `../data/output/arkit_scenes/raw/Training` |
+| `rendering.create_mesh`                 | Whether to create and display a mesh                      | `false`                           |
+| `interactive_search.outlier_method`     | Outlier detection method (`adaptive`, `iqr`, `percentile`, `z_score`, `combined`) | `"adaptive"`                      |
+| `interactive_search.use_statistical_outliers` | Use statistical outlier detection                        | `true`                            |
+| `interactive_search.use_dino_filtering` | Use DINO features for structural filtering                | `true`                            |
+| `server.port`                           | Port for Rerun viewer or gRPC server                      | `9878`                            |
+| `server.mode`                           | `local` (spawn viewer) or `remote` (gRPC server)          | `remote`                          |
+
+**To see all config options and their defaults, check `rerun/config/base_config.yaml`.**
+
+---
+
+#### **Legacy/Direct Script Usage**
+
+You can also run the visualization directly (bypassing Hydra/config):
 
 ```bash
-# Stream to remote Rerun viewer
-python visualize_pointcloud.py <slam_dir> --remote-host <remote_ip> --remote-port 9876
+python rerun/src/visualize_interactive_text_search.py <path/to/featurized/pt/files> --file-type <file_key>
+```
+But **using `run_interactive.py` with Hydra is recommended** for full config flexibility.
 
-# Save visualization data to file
-python visualize_pointcloud.py <slam_dir> --mode save
+---
+
+#### **MASt3R-SLAM Results Visualization**
+
+For visualizing raw SLAM outputs (PLY, trajectory, keyframes, depth maps):
+
+```bash
+python rerun/scripts/visualize_mast3r_pointcloud.py <slam_dir> [--mode serve|save] [--remote-host <ip>] [--remote-port <port>]
 ```
 
-#### Features
+---
 
-- **Automatic file discovery** from SLAM output directory
-- **Interactive 3D visualization** of point clouds with colors
-- **Camera trajectory** visualization over time
-- **Timeline scrubbing** through keyframe images
-- **Synchronized depth maps** with keyframes
-- **Remote streaming** support for visualization
-- **Timeline-based navigation** using timestamps
+### Features
 
-#### Auto-discovered Files
+- **Interactive text search** on featurized point clouds (CLIP/DINO)
+- **Automatic file discovery** from SLAM/featurized output directories
+- **3D visualization** of point clouds, camera trajectory, keyframes, depth maps
+- **Remote streaming** and local viewer support
+- **Configurable outlier detection and filtering** (see terminal `help`)
 
-The script automatically finds and loads:
-- PLY pointcloud file
-- Camera poses and timestamps
-- Camera intrinsics
-- Keyframe images (PNG format)
-- Depth maps (NPY format)
+---
