@@ -40,7 +40,6 @@ def main(cfg: DictConfig) -> None:
     pil_images = [Image.open(p).convert("RGB") for p in image_paths]
 
     # --- 3. Pipeline Execution ---
-    # ... (The rest of the script is exactly the same) ...
     vggt_output_gpu = reconstruction.run_vggt(pil_images, device, dtype)
     features_gpu = feature_extraction.run(pil_images, vggt_output_gpu, cfg, device)
     final_data_cpu = processing.filter_and_aggregate(vggt_output_gpu, features_gpu, cfg.processing)

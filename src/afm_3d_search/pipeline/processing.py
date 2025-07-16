@@ -19,14 +19,9 @@ def depth_to_world_coords_points(depth, extr, intr):
 
     hom_cam_coords = np.concatenate([cam_coords, np.ones((H, W, 1))], axis=-1)
     
-    # --- THE FIX ---
-    # Augment the 3x4 extrinsic matrix to an invertible 4x4 homogeneous matrix
     bottom_row = np.array([[0.0, 0.0, 0.0, 1.0]])
     extr_hom = np.vstack((extr, bottom_row))
-    
-    # Use the new, square matrix for the inversion
     world_coords = hom_cam_coords @ np.linalg.inv(extr_hom).T
-    # --- END FIX ---
 
     return world_coords[..., :3], world_coords, hom_cam_coords
 
@@ -145,7 +140,6 @@ def save_artifacts(output_dir: Path, final_data_cpu: dict):
     points_cpu = final_data_cpu['points']
     colors_cpu = final_data_cpu['colors']
 
-    # Save Point Cloud
     ply_path = output_dir / "point_cloud.ply"
     if colors_cpu.max() <= 1.0:
         colors_cpu = (colors_cpu * 255).astype(np.uint8)
@@ -153,7 +147,6 @@ def save_artifacts(output_dir: Path, final_data_cpu: dict):
     pc.export(ply_path)
     print(f"✅ Point cloud saved to {ply_path}")
 
-    # Save Features
     np.save(output_dir / "dino_features.npy", final_data_cpu['dino_features'])
     print(f"✅ DINO features saved")
     

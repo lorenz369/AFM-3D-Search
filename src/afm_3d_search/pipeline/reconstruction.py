@@ -7,16 +7,11 @@ import gc
 import torchvision.transforms.functional as TF
 import numpy as np
 
-# --- VGGT Imports ---
-try:
-    from vggt.models.vggt import VGGT
-    from vggt.utils.pose_enc import pose_encoding_to_extri_intri
-except ImportError:
-    print("⚠️ VGGT library not found. Using mock classes for demonstration.")
-    # Define mock classes here if needed
+from vggt.models.vggt import VGGT
+from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 
-# --- Re-implementation of your original preprocessing logic ---
-# This helper function processes a SINGLE image, reusing your logic.
+
+
 def _preprocess_single_image(img: Image.Image, mode: str = "crop", target_size: int = 518) -> torch.Tensor:
     """Applies the specific preprocessing steps from the original project to a single PIL image."""
     
@@ -139,12 +134,10 @@ def run_vggt(pil_images: List[Image.Image], device: str, dtype: torch.dtype) -> 
     del vggt_model, images_tensor
     gc.collect(); torch.cuda.empty_cache()
 
-    # Return the GPU tensors directly for the next pipeline step
     return {
         "depth_tensor": predictions["depth"],
         "confidence_tensor": predictions["depth_conf"],
-        "images_tensor": predictions["images"], # This is the tensor of processed colors
-        "images_tensor": predictions["images"], # This is the tensor of processed colors
+        "images_tensor": predictions["images"], 
         "extrinsic_tensor": extrinsic,
         "intrinsic_tensor": intrinsic,
         "height": H,

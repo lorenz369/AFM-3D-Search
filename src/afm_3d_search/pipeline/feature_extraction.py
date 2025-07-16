@@ -83,14 +83,9 @@ class _MaskEmbeddingFeatureImageGenerator:
         return outfeat
 
 
-
 # --- Main Feature Extraction Functions ---
-
 def extract_dino_features_from_pil(pil_images, dino_version, target_height, target_width, device, batch_size):
-    """
-    Corrected and complete implementation.
-    Accepts PIL images and returns a GPU tensor.
-    """
+
     print(f"🦖 Initializing DINOv2 model ({dino_version})...")
     dinov2_model = torch.hub.load('facebookresearch/dinov2', dino_version, verbose=False).to(device).eval()
 
@@ -121,24 +116,19 @@ def extract_dino_features_from_pil(pil_images, dino_version, target_height, targ
             all_features.append(upsampled_features)
 
     del dinov2_model
-    # The permute needs to happen on the final concatenated tensor to be efficient
     final_tensor = torch.cat(all_features, dim=0)
     return final_tensor.permute(0, 2, 3, 1)
 
 def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint_filename, target_height, target_width, device, batch_size):
-    """Corrected to handle full checkpoint path."""
     print("📎 Initializing SAM and CLIP models...")
     
-    # --- FIX: Define a weights directory and construct the full path ---
     WEIGHTS_DIR = Path("weights")
     sam_checkpoint_path = WEIGHTS_DIR / sam_checkpoint_filename
     
     if not sam_checkpoint_path.exists():
         _download_file("https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth", sam_checkpoint_path)
 
-    # Use the full path to load the model
     sam_model = sam_model_registry["vit_h"](checkpoint=sam_checkpoint_path).to(device)
-    # -----------------------------------------------------------------
 
     mask_generator = SamAutomaticMaskGenerator(sam_model)
     clip_encoder = _ClipEncoder(version=clip_version, device=device)
@@ -157,7 +147,6 @@ def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint_file
 
 
 # --- Main Run Function ---
-
 def run(pil_images: List[Image.Image], vggt_output: Dict, cfg: DictConfig, device: str) -> Dict:
     """Extracts all configured features and returns them as GPU tensors."""
     
