@@ -29,6 +29,7 @@ from visualize_featurized_pointcloud import (
     estimate_normals_and_mesh,
     features_to_colors_pca,
     load_featurized_pointcloud,
+    load_original_pointcloud,
 )
 
 def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.1, 
@@ -516,10 +517,12 @@ def create_hybrid_clip_dino_highlights(points, clip_features, dino_features, tex
     return final_indices, highlight_points, highlight_colors, similarities, outlier_stats
 
 class InteractiveTextSearch:
-    """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering."""
+    """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering.
+    Optionally visualizes the original pointcloud if original_pointcloud is set.
+    """
     
     def __init__(self, files_info, file_key, clip_model_version="ViT-B/32", create_mesh=True, 
-                 outlier_method='adaptive', use_statistical_outliers=True, use_dino_filtering=True):
+                 outlier_method='adaptive', use_statistical_outliers=True, use_dino_filtering=True, original_pointcloud=None, config=None):
         self.files_info = files_info
         self.file_key = file_key
         self.clip_model_version = clip_model_version
@@ -527,6 +530,8 @@ class InteractiveTextSearch:
         self.outlier_method = outlier_method
         self.use_statistical_outliers = use_statistical_outliers
         self.use_dino_filtering = use_dino_filtering
+        self.original_pointcloud = original_pointcloud
+        self.config = config
         
         # Load data once
         print("🔄 Loading pointcloud data...")
@@ -785,7 +790,7 @@ class InteractiveTextSearch:
                 self.query_counter += 1
                 # Use the built-in "timeline" for simplicity – this is the same
                 # timeline that was initialised to 0.0 in `run_interactive_session`.
-                rr.set_time_seconds("timeline", float(self.query_counter))
+                rr.set_time("timeline", timestamp=float(self.query_counter))
 
             # Note: for an empty query ("clear") we *don’t* advance the counter –
             # this keeps the visualised stats aligned with the last executed
@@ -1111,7 +1116,9 @@ class InteractiveTextSearch:
             rr.log("errors/search", rr.TextLog(f"Error: {str(e)}", level=rr.TextLogLevel.ERROR))
     
     def run_interactive_session(self, port=9878):
-        """Run the main interactive session."""
+        """
+        Run the main interactive session. If self.original_pointcloud is set, visualize the original pointcloud before the featurized one.
+        """
         # Initialize Rerun
         rr.init("Interactive_Text_Search", spawn=False)
         rr.serve_grpc(grpc_port=port)
@@ -1119,7 +1126,22 @@ class InteractiveTextSearch:
         
         # Setup coordinate frame
         rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
-        rr.set_time_seconds("timeline", 0.0)
+        rr.set_time("timeline", timestamp=0.0)
+
+        # Visualize original pointcloud if requested
+        if self.original_pointcloud is not None:
+            print("\n📂 Visualizing original pointcloud (PLY) for reference...")
+            try:
+                points, colors = load_original_pointcloud(self.file_key, self.original_pointcloud)
+                if colors is not None:
+                    rr.log("world/original_pointcloud", rr.Points3D(points, colors=colors, radii=0.008), static=True)
+                else:
+                    rr.log("world/original_pointcloud", rr.Points3D(points, radii=0.008), static=True)
+                print("Original pointcloud logged to rerun.")
+            except Exception as e:
+                print(f"[Warning] Could not visualize original pointcloud: {e}")
+        else:
+            print("[Info] No original_pointcloud path provided; skipping original pointcloud visualization.")
         
         # Log the base pointcloud
         print("📊 Logging base pointcloud...")

@@ -21,6 +21,7 @@ __all__ = [
     "features_to_colors_pca",
     "estimate_normals_and_mesh",
     "create_text_similarity_highlights",
+    "visualize_original_pointcloud",
 ] 
 
 def discover_featurized_files(base_dir):
@@ -341,3 +342,32 @@ def create_text_similarity_highlights(points, clip_features, text_query,
     print(f"🎯 Top similarity: {highlight_similarities.max():.3f}")
     
     return highlight_indices, highlight_points, highlight_colors, similarities
+
+def load_original_pointcloud(file_key, original_pointcloud):
+    """
+    Load the original pointcloud (PLY) corresponding to a featurized pointcloud.
+    Args:
+        file_key: str, the key/scene id (e.g., '42447230')
+        original_pointcloud: str, path to the Training directory (e.g., '/path/to/Training')
+    Returns:
+        points: np.ndarray of shape (N, 3)
+        colors: np.ndarray of shape (N, 3) or None
+    """
+    # Determine the PLY file path
+    ply_path = os.path.join(
+        os.path.abspath(original_pointcloud),
+        file_key,
+        f"{file_key}_3dod_mesh.ply"
+    )
+    if not os.path.exists(ply_path):
+        raise FileNotFoundError(f"Original PLY file not found: {ply_path}")
+
+    print(f"Loading original pointcloud from {ply_path} ...")
+    pcd = o3d.io.read_point_cloud(ply_path)
+    points = np.asarray(pcd.points)
+    colors = np.asarray(pcd.colors) if pcd.has_colors() else None
+    if colors is not None and colors.max() > 1.0:
+        colors = colors / 255.0
+
+    print(f"Loaded {points.shape[0]} points from original PLY.")
+    return points, colors

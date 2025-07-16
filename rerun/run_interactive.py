@@ -5,6 +5,7 @@
 """
 import hydra
 from omegaconf import DictConfig
+from omegaconf import OmegaConf
 
 from visualize_featurized_pointcloud import discover_featurized_files
 from visualize_interactive_text_search import InteractiveTextSearch
@@ -12,7 +13,14 @@ from visualize_interactive_text_search import InteractiveTextSearch
 
 @hydra.main(version_base="1.3", config_path="config", config_name="interactive")
 def main(cfg: DictConfig) -> None:
-    """Launch the interactive text-search viewer with parameters from *cfg*."""
+    """
+    Launch the interactive text-search viewer with parameters from *cfg*.
+    If cfg.original_pointcloud is set, the original (PLY) pointcloud will also be visualized for reference.
+    """
+
+    print("\n================ Hydra Config Used ================")
+    print(OmegaConf.to_yaml(cfg))
+    print("==================================================\n")
 
     # ---------------------------------------------------------------------
     # 1. Locate point-cloud (.pt) files
@@ -29,6 +37,8 @@ def main(cfg: DictConfig) -> None:
         outlier_method=cfg.interactive_search.outlier_method,
         use_statistical_outliers=cfg.interactive_search.use_statistical_outliers,
         use_dino_filtering=cfg.interactive_search.use_dino_filtering,
+        original_pointcloud=getattr(cfg, "original_pointcloud", None),
+        config=cfg,
     )
 
     # ---------------------------------------------------------------------
