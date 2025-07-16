@@ -1,6 +1,5 @@
 # AFM 3D Search
 
----
 
 ## ⚙️  Setup
 
@@ -68,63 +67,75 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-## 🚀 Usage
+## Usage
 
-```
-# 1. Generate a feature cloud from your images
-# Note: Place images in the default path 'data/input/bude/images'
-# or edit the path in 'src/afm_3d_search/conf/paths/default.yaml'
-python src/afm_3d_search/generate_pointcloud.py
+There are three primary ways to use this project: running the full pipeline on a local dataset, analyzing the results of a processed scene, or deploying the full API service.
 
-# 2. Run analysis scripts on the latest generated cloud
+A **`scene_id`** is required for most commands and corresponds to the name of a scene's data folder (e.g., `bude`).
 
-# Highlight points using a text query (CLIP)
-python src/afm_3d_search/highlight_clip.py text_query="a red chair"
+### 1. Running the Full Pipeline
 
-# Highlight points by similarity to a point index (DINO)
-python src/afm_3d_search/highlight_dino.py query_point_index=100000 top_k=5000
-```
+Use this method to process a directory of images into a 3D point cloud with extracted features. This is ideal for development and testing.
 
-## New Usage
-There are two primary ways to run this project: directly from the command line for local experiments, or as a full server-worker pipeline to handle API requests.
+The pipeline reads images from `data/testing/<scene_id>/images/` and saves the final artifacts to `data/completed/<scene_id>/`.
 
-### 1. Local Experiments & Testing
-Use this method to run the entire pipeline on local data. This is ideal for development, debugging, and experimenting with different model configurations. The default test data is expected in data/testing/bude/images.
+#### **Standard Run**
 
-#### Run the pipeline with default settings:
-
-```
-# This will process the default test data using the models defined in your config
-python src/afm_3d_search/run_pipeline.py
+```bash
+# Process the 'bude' scene with the default models
+python src/afm_3d_search/run_pipeline.py scene_id=bude
 ```
 
-#### Run with different model configurations:
-You can easily override any setting from the command line using Hydra's syntax.
+#### **Run with Different Models**
 
+You can easily swap model configurations by referencing other files in the `conf/models/` directory. This is perfect for quick experiments.
+
+```bash
+# Run with faster, lower-VRAM models defined in 'conf/models/fast_test.yaml'
+python src/afm_3d_search/run_pipeline.py scene_id=bude models=fast_test
 ```
-# Run with faster, lower-quality models for a quick test
-python src/afm_3d_search/run_pipeline.py models.dino=small models.clip=base models.sam=base
+
+### 2. Analyzing a Processed Scene
+
+Once a scene has been processed, you can use the highlight scripts to perform analysis. These scripts read from `data/completed/<scene_id>/` and save their output (a colored `.ply` file) to a new, timestamped folder in `outputs/`.
+
+#### **Text-based Search (CLIP)**
+
+```bash
+# Analyze the 'bude' scene with the default text query
+python scripts/highlight_clip.py scene_id=bude
+
+# Override the text query from the command line
+python scripts/highlight_clip.py scene_id=bude highlight.text_query="a red chair"
 ```
 
-### 2. Full Server Pipeline (via API)
-Use this method to run the live service that accepts image uploads. This requires two separate terminals.
+#### **Similarity Search (DINO)**
 
-#### Terminal 1: Start the API Server
-This command starts the web server, which listens for uploads.
+```bash
+# Analyze 'bude' using a default starting point for similarity search
+python scripts/highlight_dino.py scene_id=bude
 
-
+# Specify a different point index and search radius (top_k)
+python scripts/highlight_dino.py scene_id=bude highlight.query_point_index=50000 highlight.top_k=1000
 ```
+
+### 3. Running as an API Service
+
+This runs the project as a live service that accepts image uploads via an HTTP endpoint. This requires two separate terminals.
+
+#### **Terminal 1: Start the API Server**
+
+This command starts the web server, which listens for uploads on port 8000. Uploaded images are saved to the `data/staging/` directory.
+
+```bash
 uvicorn src.afm_3d_search.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### Terminal 2: Start the Worker
-This command starts the background worker, which will process jobs as they are created by the API server.
+#### **Terminal 2: Start the Worker**
 
-```
+This command starts the background worker, which polls for new jobs created by the API server and processes them using the main pipeline.
+
+```bash
 python src/afm_3d_search/worker.py
-Once both are running, you can send a POST request with multiple image files to the endpoint http://localhost:8000/v1/scenes. The server will accept the upload and the worker will begin processing the scene.
 ```
-
-
-python src/afm_3d_search/run_pipeline.py scene_id=bude data_source=testing
-uv pip install xFormers
+Once both services are running, you can `POST` multiple image files to the `http://localhost:8000/v1/scenes` endpoint to create a new processing job.

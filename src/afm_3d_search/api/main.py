@@ -26,8 +26,8 @@ async def create_processing_job(images: List[UploadFile] = File(...)):
         raise HTTPException(status_code=400, detail="No images were uploaded.")
     
     scene_id = str(uuid.uuid4())
-    scene_staging_dir = STAGING_DIR / scene_id
-    scene_staging_dir.mkdir()
+    scene_staging_dir = STAGING_DIR / scene_id / "images" 
+    scene_staging_dir.mkdir(parents=True)
 
     # Save all uploaded images
     for image in images:

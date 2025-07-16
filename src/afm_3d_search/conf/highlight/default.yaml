@@ -1,0 +1,5 @@
+# conf/highlight/default.yaml
+
+text_query: "a chair"
+query_point_index: 75000
+top_k: 5000

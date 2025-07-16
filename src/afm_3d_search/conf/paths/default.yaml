@@ -1,3 +1,5 @@
 # conf/paths/default.yaml
-image_folder: "data/input/bude/images"
-output_dir: "outputs/${run_name}"
+
+data_root: "/workspace/AFM-3D-Search/data"
+raw_dir_name: "testing"
+completed_dir_name: "completed"

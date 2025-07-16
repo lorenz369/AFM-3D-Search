@@ -17,8 +17,9 @@ def run_pipeline_for_job(job_path: Path):
     
     command = [
         "python",
-        "src/afm_3d_search/run_pipeline.py", # Changed from main.py
-        f"scene_id={scene_id}"
+        "src/afm_3d_search/run_pipeline.py",
+        f"scene_id={scene_id}",
+        "paths.raw_dir_name=staging"
     ]
     
     try:

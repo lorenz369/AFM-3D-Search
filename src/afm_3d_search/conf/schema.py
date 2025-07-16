@@ -1,12 +1,40 @@
 # src/afm_3d_search/conf/schema.py
 
-from dataclasses import dataclass
-from typing import List, Optional # FIX: 'Optional' is now imported
+from dataclasses import dataclass, field
+from typing import Optional
+
+# Using nested dataclasses for clear organization
+@dataclass
+class ClipModelConfig:
+    version: str
+
+@dataclass
+class SamModelConfig:
+    checkpoint: str
+
+@dataclass
+class DinoModelConfig:
+    version: str
+
+@dataclass
+class ModelsConfig:
+    clip: ClipModelConfig
+    sam: SamModelConfig
+    dino: DinoModelConfig
 
 @dataclass
 class PathsConfig:
-    image_folder: str 
-    output_dir: str
+    # Base directory for all data
+    data_root: str = "/workspace/AFM-3D-Search/data"
+    # Subdirectory for raw images
+    raw_dir_name: str = "testing" 
+    # Subdirectory for pipeline outputs
+    completed_dir_name: str = "completed"
+    
+    # These will be derived in the code, not set here
+    ply_filename: str = "point_cloud.ply"
+    clip_features_filename: str = "clip_features.npy"
+    dino_features_filename: str = "dino_features.npy"
 
 @dataclass
 class ProcessingConfig:
@@ -16,18 +44,28 @@ class ProcessingConfig:
     clip_batch_size: int
 
 @dataclass
-class ModelsConfig:
-    clip_version: str
-    sam_checkpoint: str
-    dino_version: str
+class HighlightConfig:
+    # Parameters for the highlight scripts
+    text_query: str = "a bed"
+    query_point_index: int = 10000
+    top_k: int = 5000
 
 @dataclass
-class Config:
-    paths: PathsConfig
-    processing: ProcessingConfig
-    models: ModelsConfig
-    run_name: str
+class MainConfig:
+    # This defaults list is the heart of Hydra's composition
+    defaults: list = field(default_factory=lambda: [
+        "_self_",
+        {"paths": "default"},
+        {"models": "default"},
+        {"processing": "default"},
+        {"highlight": "default"}
+    ])
+
+    # Connects all the parts
+    paths: PathsConfig = field(default_factory=PathsConfig)
+    models: ModelsConfig = field(default_factory=ModelsConfig)
+    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
+    highlight: HighlightConfig = field(default_factory=HighlightConfig)
     
-    # FIX: These parameters are now officially part of the configuration
-    scene_id: Optional[str] = None
-    data_source: str = "staging"
+    # A scene_id is now required for any run
+    scene_id: str = "???"

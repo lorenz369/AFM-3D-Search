@@ -1,4 +1,5 @@
 # conf/models/default.yaml
+
 clip:
   version: "ViT-L/14"
 sam:
