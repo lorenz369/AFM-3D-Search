@@ -23,8 +23,8 @@ from pathlib import Path
 import numpy as np
 import rerun as rr
 
-from clip_encoder import ClipEncoder
-from visualize_featurized_pointcloud import (
+from src.clip_encoder import ClipEncoder
+from src.visualize_featurized_pointcloud import (
     create_text_similarity_highlights,
     estimate_normals_and_mesh,
     features_to_colors_pca,

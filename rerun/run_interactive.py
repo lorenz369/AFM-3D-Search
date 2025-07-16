@@ -7,8 +7,8 @@ import hydra
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 
-from visualize_featurized_pointcloud import discover_featurized_files
-from visualize_interactive_text_search import InteractiveTextSearch
+from src.visualize_featurized_pointcloud import discover_featurized_files
+from src.visualize_interactive_text_search import InteractiveTextSearch
 
 
 @hydra.main(version_base="1.3", config_path="config", config_name="interactive")

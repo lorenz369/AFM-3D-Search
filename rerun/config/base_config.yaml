@@ -5,14 +5,13 @@ defaults:
   - _self_
 
 # REQUIRED: directory containing featurised *.pt files          
-pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/arkit_scenes/raw/featurized # <-- override via CLI
+pointcloud_dir: /home/marco/Marco/AFM-3D-Search/data/output/arkit_scenes/raw/featurized/ # <-- override via CLI
 
 # In base_config.yaml or interactive.yaml
-original_pointcloud: /home/marco/Marco/AFM-3D-Search/data/arkit_scenes/raw/Training
+original_pointcloud: /home/marco/Marco/AFM-3D-Search/data/output/arkit_scenes/raw/Training
 
 # Determine which .pt key/filename (without extension) to load.
 file_type: "42447230"
-
 
 rendering:
   point_size: 0.01
