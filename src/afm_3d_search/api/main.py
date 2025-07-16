@@ -14,8 +14,8 @@ JOBS_PENDING_DIR = Path("jobs/pending")
 @app.on_event("startup")
 def on_startup():
     """Ensure necessary directories exist when the app starts."""
-    STAGING_DIR.mkdir(exist_ok=True)
-    JOBS_PENDING_DIR.mkdir(exist_ok=True)
+    STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    JOBS_PENDING_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.post("/v1/scenes", status_code=202)
 async def create_processing_job(images: List[UploadFile] = File(...)):

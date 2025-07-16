@@ -29,7 +29,8 @@ dependencies = [
     
     # Web framework
     "fastapi",
-    "uvicorn[standard]"
+    "uvicorn[standard]",
+    "python-multipart"
 ]
 
 [tool.uv]
@@ -43,4 +44,3 @@ index-strategy = "unsafe-best-match"
 
 [build-system]
 requires = ["setuptools"]
-build-backend = "setuptools.build_meta"

@@ -1,3 +1,5 @@
+# src/afm_3d_search/pipeline/feature_extraction.py
+
 import torch
 from omegaconf import DictConfig
 from typing import List, Dict
@@ -8,59 +10,29 @@ import requests
 from tqdm import tqdm
 from torchvision import transforms
 import numpy as np
+from pathlib import Path
+
+# --- Model Imports ---
+import clip
+from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
 
-def _download_file(url, destination):
-    """Internal helper to download model weights with a progress bar."""
-    print(f"📦 Downloading required model: {url.split('/')[-1]}...")
+# --- Helper Function for Downloads ---
+def _download_file(url, destination: Path):
+    print(f"📦 Downloading required model: {destination.name}...")
+    parent_dir = destination.parent
+    if parent_dir and not parent_dir.exists():
+        parent_dir.mkdir(parents=True, exist_ok=True)
+    
     response = requests.get(url, stream=True)
     response.raise_for_status()
     total_size = int(response.headers.get('content-length', 0))
-    with open(destination, 'wb') as f, tqdm(
-        total=total_size, unit='iB', unit_scale=True, unit_divisor=1024,
-        desc=destination.split('/')[-1]
-    ) as bar:
+    with open(destination, 'wb') as f, tqdm(total=total_size, unit='iB', unit_scale=True, desc=destination.name) as bar:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
             bar.update(len(chunk))
 
-def extract_dino_features_from_pil(pil_images, dino_version, target_height, target_width, device, batch_size):
-    """Corrected to accept PIL images and return a GPU tensor."""
-    print(f"🦖 Initializing DINOv2 model ({dino_version})...")
-    dinov2_model = torch.hub.load('facebookresearch/dinov2', dino_version, verbose=False).to(device).eval()
-
-    dino_transforms = transforms.Compose([
-        transforms.Resize((target_height, target_width)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-
-    all_features = []
-    print(f"🦖 Extracting DINOv2 features from {len(pil_images)} images...")
-    with torch.no_grad():
-        for i in tqdm(range(0, len(pil_images), batch_size), desc="DINOv2 Batches"):
-            # FIX: Use the pil_images list directly
-            image_batch = pil_images[i:i+batch_size]
-            transformed_images = torch.stack([dino_transforms(p) for p in image_batch]).to(device)
-
-            features_dict = dinov2_model.forward_features(transformed_images)
-            patch_features = features_dict['x_norm_patchtokens']
-
-            B, N, D = patch_features.shape
-            H_patch = target_height // 14
-            W_patch = target_width // 14
-
-            feature_map_2d = patch_features.reshape(B, H_patch, W_patch, D).permute(0, 3, 1, 2)
-            upsampled_features = torch.nn.functional.interpolate(
-                feature_map_2d, size=(target_height, target_width), mode='bilinear', align_corners=False
-            )
-            # FIX: Return tensor on GPU
-            all_features.append(upsampled_features.permute(0, 2, 3, 1))
-
-    del dinov2_model
-    torch.cuda.empty_cache()
-    return torch.cat(all_features, dim=0)
-
+# --- Helper Classes for CLIP/SAM Blending ---
 class _ClipEncoder:
     def __init__(self, version, device):
         self.device = device
@@ -99,7 +71,7 @@ class _MaskEmbeddingFeatureImageGenerator:
             if img_roi.size == 0: continue
             roifeat = torch.nn.functional.normalize(self.image_text_encoder.encode_image(img_roi), dim=-1)
             feat_per_roi.append(roifeat)
-            roi_nonzero_inds.append(torch.from_numpy(mask["segmentation"]))
+            roi_nonzero_inds.append(torch.from_numpy(mask["segmentation"]).to(self.device))
             similarity_scores.append(self.cosine_similarity(global_feat, roifeat))
 
         if not feat_per_roi: return outfeat
@@ -110,33 +82,84 @@ class _MaskEmbeddingFeatureImageGenerator:
             outfeat[mask_seg] = weighted_feat
         return outfeat
 
-def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint, target_height, target_width, device, batch_size):
-    """Corrected to accept PIL images and return a GPU tensor."""
+
+
+# --- Main Feature Extraction Functions ---
+
+def extract_dino_features_from_pil(pil_images, dino_version, target_height, target_width, device, batch_size):
+    """
+    Corrected and complete implementation.
+    Accepts PIL images and returns a GPU tensor.
+    """
+    print(f"🦖 Initializing DINOv2 model ({dino_version})...")
+    dinov2_model = torch.hub.load('facebookresearch/dinov2', dino_version, verbose=False).to(device).eval()
+
+    dino_transforms = transforms.Compose([
+        transforms.Resize((target_height, target_width)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    all_features = []
+    print(f"🦖 Extracting DINOv2 features from {len(pil_images)} images...")
+    with torch.no_grad():
+        for i in tqdm(range(0, len(pil_images), batch_size), desc="DINOv2 Batches"):
+            image_batch = pil_images[i:i+batch_size]
+            transformed_images = torch.stack([dino_transforms(p) for p in image_batch]).to(device)
+
+            features_dict = dinov2_model.forward_features(transformed_images)
+            patch_features = features_dict['x_norm_patchtokens']
+
+            B, N, D = patch_features.shape
+            H_patch = target_height // 14
+            W_patch = target_width // 14
+
+            feature_map_2d = patch_features.reshape(B, H_patch, W_patch, D).permute(0, 3, 1, 2)
+            upsampled_features = torch.nn.functional.interpolate(
+                feature_map_2d, size=(target_height, target_width), mode='bilinear', align_corners=False
+            )
+            all_features.append(upsampled_features)
+
+    del dinov2_model
+    # The permute needs to happen on the final concatenated tensor to be efficient
+    final_tensor = torch.cat(all_features, dim=0)
+    return final_tensor.permute(0, 2, 3, 1)
+
+def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint_filename, target_height, target_width, device, batch_size):
+    """Corrected to handle full checkpoint path."""
     print("📎 Initializing SAM and CLIP models...")
-    # ... (code for _download_file, _ClipEncoder, _MaskEmbeddingFeatureImageGenerator) ...
-    # This logic should be here or imported
     
+    # --- FIX: Define a weights directory and construct the full path ---
+    WEIGHTS_DIR = Path("weights")
+    sam_checkpoint_path = WEIGHTS_DIR / sam_checkpoint_filename
+    
+    if not sam_checkpoint_path.exists():
+        _download_file("https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth", sam_checkpoint_path)
+
+    # Use the full path to load the model
+    sam_model = sam_model_registry["vit_h"](checkpoint=sam_checkpoint_path).to(device)
+    # -----------------------------------------------------------------
+
+    mask_generator = SamAutomaticMaskGenerator(sam_model)
+    clip_encoder = _ClipEncoder(version=clip_version, device=device)
+    feature_generator = _MaskEmbeddingFeatureImageGenerator(mask_generator, clip_encoder, device)
+
     all_features = []
     print(f"📎 Extracting CLIP (SAM-blended) features from {len(pil_images)} images...")
     with torch.no_grad():
-        for i in tqdm(range(0, len(pil_images), batch_size), desc="CLIP Batches"):
-            image_batch = pil_images[i:i+batch_size]
-            for image in image_batch:
-                # FIX: Use the passed-in image object
-                resized_image = image.resize((target_width, target_height))
-                # FIX: Return tensor on GPU
-                all_features.append(feature_generator.generate_features(np.array(resized_image)))
+        for image in tqdm(pil_images, desc="CLIP Batches"):
+            resized_image = image.resize((target_width, target_height))
+            feature_tensor = feature_generator.generate_features(np.array(resized_image))
+            all_features.append(feature_tensor)
 
     del sam_model, mask_generator, clip_encoder, feature_generator
-    torch.cuda.empty_cache()
     return torch.stack(all_features, dim=0)
 
-    
+
+# --- Main Run Function ---
+
 def run(pil_images: List[Image.Image], vggt_output: Dict, cfg: DictConfig, device: str) -> Dict:
     """Extracts all configured features and returns them as GPU tensors."""
-    
-    # For brevity, I am assuming the full corrected helper functions from above are pasted here
-    # This is a placeholder for where the full code for those helpers should go.
     
     dino_features_gpu = extract_dino_features_from_pil(
         pil_images, cfg.models.dino.version, vggt_output['height'], vggt_output['width'], device, cfg.processing.dino_batch_size

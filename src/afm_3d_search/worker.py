@@ -38,7 +38,7 @@ def main():
     
     # Ensure directories exist
     for d in [JOBS_PROCESSING_DIR, JOBS_COMPLETED_DIR, JOBS_FAILED_DIR]:
-        d.mkdir(exist_ok=True)
+        d.mkdir(parents=True, exist_ok=True)
         
     while True:
         try:

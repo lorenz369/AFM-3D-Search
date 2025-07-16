@@ -18,7 +18,15 @@ def depth_to_world_coords_points(depth, extr, intr):
     cam_coords = cam_coords @ np.linalg.inv(intr).T
 
     hom_cam_coords = np.concatenate([cam_coords, np.ones((H, W, 1))], axis=-1)
-    world_coords = hom_cam_coords @ np.linalg.inv(extr).T
+    
+    # --- THE FIX ---
+    # Augment the 3x4 extrinsic matrix to an invertible 4x4 homogeneous matrix
+    bottom_row = np.array([[0.0, 0.0, 0.0, 1.0]])
+    extr_hom = np.vstack((extr, bottom_row))
+    
+    # Use the new, square matrix for the inversion
+    world_coords = hom_cam_coords @ np.linalg.inv(extr_hom).T
+    # --- END FIX ---
 
     return world_coords[..., :3], world_coords, hom_cam_coords
 
@@ -27,7 +35,7 @@ def unproject_depth_map_to_point_map_numpy(depth_maps, extrinsics, intrinsics):
     world_points_list = []
     for i in range(depth_maps.shape[0]):
         world_points, _, _ = depth_to_world_coords_points(
-            depth_maps[i], extrinsics[i], intrinsics[i]
+            depth_maps[i].squeeze(-1), extrinsics[i], intrinsics[i]
         )
         world_points_list.append(world_points)
     return np.stack(world_points_list, axis=0)
