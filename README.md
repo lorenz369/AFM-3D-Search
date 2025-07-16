@@ -68,9 +68,10 @@ Sync MAST3R SLAMS output (example)
 rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-SLAM/logs/ /home/marco/Marco/AFM-3D-Search/MASt3R-SLAM/logs/
 ```
 
-Sync locate-3d preprocessing output (example)
+Sync data dir (example)
 ```
-rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/ /home/marco/Marco/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data /home/marco/Marco/AFM-3D-Search/
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremers45.in.tum.de:~/AFM-3D-Search/
 ```
 
 ## Useful Commands
