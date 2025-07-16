@@ -26,6 +26,48 @@ uv pip install -e .
 cd ../..
 ```
 
+setup.sh
+
+````
+#!/bin/bash
+
+set -e  # Exit on any error
+
+echo "🚀 Starting AFM-3D-Search setup..."
+
+# 1. Install uv (a fast Python package installer)
+echo "📦 Installing uv..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+
+# 2. Clone Repo
+echo "📥 Cloning repository..."
+git clone https://github.com/lorenz369/AFM-3D-Search.git
+cd AFM-3D-Search/
+git switch feat/add-scene-processing-endpoint
+git submodule update --init --recursive
+
+# 3. Create venv and install dependencies
+echo "🐍 Creating virtual environment and installing dependencies..."
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+
+# 4. Install vggt
+echo "🔧 Installing vggt submodule..."
+cd submodules/vggt
+uv pip install -e .
+cd ../..
+
+echo "✅ Setup complete! Virtual environment is activated."
+echo "💡 To activate the environment in the future, run: source AFM-3D-Search/.venv/bin/activate"
+````
+
+```
+chmod +x setup.sh
+./setup.sh
+```
+
 ## 🚀 Usage
 
 ```

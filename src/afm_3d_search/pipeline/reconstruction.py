@@ -94,33 +94,6 @@ def run_vggt(pil_images: List[Image.Image], device: str, dtype: torch.dtype) -> 
 
     # Create the final batch tensor for the model
     images_tensor = torch.stack(processed_images).unsqueeze(0).to(device)
-    # Preprocess all images using our new helper function
-    print("Pre-processing images with original project logic...")
-    processed_images = [_preprocess_single_image(img, mode="crop") for img in pil_images]
-
-    # Stacking logic to handle potentially different shapes after processing
-    shapes = {img.shape for img in processed_images}
-    if len(shapes) > 1:
-        print(f"Warning: Found images with different shapes after processing: {shapes}. Padding to match.")
-        max_height = max(shape[1] for shape in shapes)
-        max_width = max(shape[2] for shape in shapes)
-        
-        padded_images = []
-        for img in processed_images:
-            h, w = img.shape[1], img.shape[2]
-            h_padding = max_height - h
-            w_padding = max_width - w
-            if h_padding > 0 or w_padding > 0:
-                pad_top = h_padding // 2
-                pad_bottom = h_padding - pad_top
-                pad_left = w_padding // 2
-                pad_right = w_padding - pad_left
-                img = torch.nn.functional.pad(img, (pad_left, pad_right, pad_top, pad_bottom), mode="constant", value=1.0)
-            padded_images.append(img)
-        processed_images = padded_images
-
-    # Create the final batch tensor for the model
-    images_tensor = torch.stack(processed_images).unsqueeze(0).to(device)
 
     print("🚀 Running VGGT Inference...")
     with torch.no_grad(), torch.cuda.amp.autocast(dtype=dtype):
