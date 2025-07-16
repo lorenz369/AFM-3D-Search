@@ -1115,14 +1115,24 @@ class InteractiveTextSearch:
             print(f"❌ Error processing query '{query}': {e}")
             rr.log("errors/search", rr.TextLog(f"Error: {str(e)}", level=rr.TextLogLevel.ERROR))
     
-    def run_interactive_session(self, port=9878):
+    def run_interactive_session(self, mode="local", port=9878):
         """
         Run the main interactive session. If self.original_pointcloud is set, visualize the original pointcloud before the featurized one.
+        Args:
+            port (int): Port to serve the Rerun gRPC server on.
+            host (str): Bind address for the server (default 'localhost'). Use '0.0.0.0' for remote access.
         """
         # Initialize Rerun
         rr.init("Interactive_Text_Search", spawn=False)
-        rr.serve_grpc(grpc_port=port)
-        print(f"🌐 Rerun server started on port {port}")
+
+        if mode == "remote":
+            uri = rr.serve_grpc(grpc_port=port)
+            print(f"🌐 Rerun grpc server started on {uri}")
+        elif mode == "local":
+            rr.spawn(port=port)
+            print(f"🌐 Rerun viewer spawned on port {port}")
+        else:
+            raise ValueError(f"Invalid rerun servermode: {mode}")
         
         # Setup coordinate frame
         rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)

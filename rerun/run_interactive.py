@@ -11,7 +11,7 @@ from src.visualize_featurized_pointcloud import discover_featurized_files
 from src.visualize_interactive_text_search import InteractiveTextSearch
 
 
-@hydra.main(version_base="1.3", config_path="config", config_name="interactive")
+@hydra.main(version_base="1.3", config_path="config", config_name="base_config")
 def main(cfg: DictConfig) -> None:
     """
     Launch the interactive text-search viewer with parameters from *cfg*.
@@ -45,7 +45,8 @@ def main(cfg: DictConfig) -> None:
     # 3. Serve the Rerun stream on the configured port
     # ---------------------------------------------------------------------
     port = cfg.server.port if "server" in cfg and "port" in cfg.server else 9878
-    viewer.run_interactive_session(port=port)
+    mode = cfg.server.mode if "server" in cfg and "mode" in cfg.server else "local"
+    viewer.run_interactive_session(mode=mode, port=port)
 
 
 if __name__ == "__main__":

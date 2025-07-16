@@ -1,7 +1,0 @@
-# @package _global_
-# Show both CLIP and DINO features with HSV coloring
-
-features:
-  show_features: true
-  feature_type: "both"
-  pca_method: "hsv" 

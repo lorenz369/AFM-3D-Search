@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - base_config
-  - _self_
-
-interactive_search:
-  enable: true 

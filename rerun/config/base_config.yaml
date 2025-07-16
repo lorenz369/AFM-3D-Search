@@ -2,6 +2,7 @@
 # ---------------------------------------------------
 
 defaults:
+  - server: remote
   - _self_
 
 # REQUIRED: directory containing featurised *.pt files          
@@ -15,20 +16,14 @@ file_type: "42447230"
 
 rendering:
   point_size: 0.01
-  create_mesh: true       
+  create_mesh: false       
   
 # Feature-to-colour mapping options
 features:
-  show_features: true
-  feature_type: "both"     # clip, dino, both
-  pca_method: "hsv"        # rgb, hsv
+  show_features: false
 
 # Interactive semantic-search controls (1-to-1 with class kwargs)
 interactive_search:
   outlier_method: "adaptive"
   use_statistical_outliers: true
   use_dino_filtering: true
-
-# Network port for the local gRPC server (optional)
-server:
-  port: 9876
