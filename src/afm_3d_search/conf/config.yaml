@@ -2,7 +2,13 @@
 
 defaults:
   - _self_
+  - paths: default
+  - models: default
+  - processing: default
+  - highlight: default
   - override hydra/job_logging: disabled
   - override hydra/hydra_logging: disabled
 
+# By setting scene_id to '???', Hydra will force you to provide it
+# on the command line for every run, preventing mistakes.
 scene_id: "???"

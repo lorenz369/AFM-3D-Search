@@ -52,20 +52,9 @@ class HighlightConfig:
 
 @dataclass
 class MainConfig:
-    # This defaults list is the heart of Hydra's composition
-    defaults: list = field(default_factory=lambda: [
-        "_self_",
-        {"paths": "default"},
-        {"models": "default"},
-        {"processing": "default"},
-        {"highlight": "default"}
-    ])
-
-    # Connects all the parts
     paths: PathsConfig = field(default_factory=PathsConfig)
     models: ModelsConfig = field(default_factory=ModelsConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     highlight: HighlightConfig = field(default_factory=HighlightConfig)
     
-    # A scene_id is now required for any run
     scene_id: str = "???"
