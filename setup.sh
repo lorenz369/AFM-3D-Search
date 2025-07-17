@@ -1,4 +1,4 @@
-git clone https://github.com/lorenz369/AFM-3D-Search.git --branch refactor/rerun
+# git clone https://github.com/lorenz369/AFM-3D-Search.git --branch refactor/rerun
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
