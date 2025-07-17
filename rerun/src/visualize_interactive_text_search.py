@@ -523,6 +523,8 @@ class InteractiveTextSearch:
     
     def __init__(self, files_info, file_key, clip_model_version="ViT-B/32", create_mesh=True, 
                  outlier_method='adaptive', use_statistical_outliers=True, use_dino_filtering=True, original_pointcloud=None, config=None):
+        if files_info is None or file_key not in files_info:
+            raise ValueError("InteractiveTextSearch requires a valid featurized pointcloud. 'files_info' or 'file_key' is missing.")
         self.files_info = files_info
         self.file_key = file_key
         self.clip_model_version = clip_model_version
