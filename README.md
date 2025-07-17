@@ -59,6 +59,7 @@ rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremer
 ## Port Forwarding
 ```
 ssh -L 9878:localhost:9878 -p 58022 s0125@devcube1.cvai.cit.tum.de
+ssh -L 9878:localhost:9878 runpod
 ```
 
 ## Useful Commands
