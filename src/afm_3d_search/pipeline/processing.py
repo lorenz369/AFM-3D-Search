@@ -3,165 +3,134 @@ import trimesh
 import numpy as np
 from pathlib import Path
 from omegaconf import DictConfig
-from tqdm import tqdm
+from torch_scatter import scatter_mean
 
-# Helper function from the original VGGT utilities for CPU processing
-def depth_to_world_coords_points(depth, extr, intr):
-    H, W = depth.shape
-    ys, xs = np.meshgrid(
-        np.arange(H, dtype=np.float32),
-        np.arange(W, dtype=np.float32),
+@torch.no_grad()
+def unproject_depth_to_points_gpu(depth, extr, intr):
+    """
+    Projects a batch of depth maps to 3D world coordinates using PyTorch on the GPU.
+    depth: (B, H, W)
+    extr: (B, 3, 4)
+    intr: (B, 3, 3)
+    """
+    device = depth.device
+    B, H, W = depth.shape
+    
+    ys, xs = torch.meshgrid(
+        torch.arange(H, device=device, dtype=torch.float32),
+        torch.arange(W, device=device, dtype=torch.float32),
         indexing="ij",
     )
-    cam_coords = np.stack([xs, ys, np.ones_like(xs)], axis=-1)
-    cam_coords = cam_coords * depth[..., None]
-    cam_coords = cam_coords @ np.linalg.inv(intr).T
+    # ys, xs are (H, W), we need to expand for batch
+    ys = ys.unsqueeze(0).expand(B, -1, -1)
+    xs = xs.unsqueeze(0).expand(B, -1, -1)
 
-    hom_cam_coords = np.concatenate([cam_coords, np.ones((H, W, 1))], axis=-1)
+    ones = torch.ones_like(xs)
+    cam_coords = torch.stack([xs, ys, ones], axis=-1)  # (B, H, W, 3)
     
-    bottom_row = np.array([[0.0, 0.0, 0.0, 1.0]])
-    extr_hom = np.vstack((extr, bottom_row))
-    world_coords = hom_cam_coords @ np.linalg.inv(extr_hom).T
+    # Apply depth
+    cam_coords = cam_coords * depth.unsqueeze(-1)  # (B, H, W, 3)
+    
+    # Unproject using intrinsics
+    # (B, H*W, 3) @ (B, 3, 3) -> (B, H*W, 3)
+    cam_coords_flat = cam_coords.reshape(B, H * W, 3)
+    inv_intr = torch.inverse(intr)
+    points_cam = torch.bmm(cam_coords_flat, inv_intr.transpose(1, 2))
+    
+    # Transform to world coordinates using extrinsics
+    hom_points_cam = torch.cat([points_cam, torch.ones(B, H * W, 1, device=device)], dim=-1) # (B, H*W, 4)
+    
+    # Create homogeneous extrinsic matrix (4x4)
+    bottom_row = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device).reshape(1, 1, 4).expand(B, -1, -1)
+    extr_hom = torch.cat((extr, bottom_row), dim=1) # (B, 4, 4)
+    
+    inv_extr_hom = torch.inverse(extr_hom)
+    
+    world_coords_flat = torch.bmm(hom_points_cam, inv_extr_hom.transpose(1, 2)) # (B, H*W, 4)
+    
+    return world_coords_flat[:, :, :3].reshape(B, H, W, 3) # (B, H, W, 3)
 
-    return world_coords[..., :3], world_coords, hom_cam_coords
-
-# The original CPU-based unprojection function
-def unproject_depth_map_to_point_map_numpy(depth_maps, extrinsics, intrinsics):
-    world_points_list = []
-    for i in range(depth_maps.shape[0]):
-        world_points, _, _ = depth_to_world_coords_points(
-            depth_maps[i].squeeze(-1), extrinsics[i], intrinsics[i]
-        )
-        world_points_list.append(world_points)
-    return np.stack(world_points_list, axis=0)
-
-# The original CPU-based voxel aggregation function
-def aggregate_points_and_features_numpy(points, colors, features_dict, voxel_size):
-    print(f"🧊 Voxelizing and aggregating points with voxel size {voxel_size}...")
-    voxel_indices = np.floor(points / voxel_size).astype(int)
-
-    voxel_data = {}
-    for i in tqdm(range(len(voxel_indices)), desc="Mapping points to voxels"):
-        voxel_key = tuple(voxel_indices[i])
-        if voxel_key not in voxel_data:
-            voxel_data[voxel_key] = {'points': [], 'colors': [], 'dino': [], 'clip': []}
-        
-        voxel_data[voxel_key]['points'].append(points[i])
-        voxel_data[voxel_key]['colors'].append(colors[i])
-        voxel_data[voxel_key]['dino'].append(features_dict['dino'][i])
-        voxel_data[voxel_key]['clip'].append(features_dict['clip'][i])
-
-    num_voxels = len(voxel_data)
-    dino_dim = features_dict['dino'].shape[1]
-    clip_dim = features_dict['clip'].shape[1]
-
-    agg_points = np.zeros((num_voxels, 3), dtype=np.float32)
-    agg_colors = np.zeros((num_voxels, 3), dtype=np.float32)
-    agg_dino = np.zeros((num_voxels, dino_dim), dtype=np.float32)
-    agg_clip = np.zeros((num_voxels, clip_dim), dtype=np.float32)
-
-    for i, key in enumerate(tqdm(voxel_data.keys(), desc="Averaging voxel data")):
-        data = voxel_data[key]
-        agg_points[i] = np.mean(data['points'], axis=0)
-        agg_colors[i] = np.mean(data['colors'], axis=0)
-        agg_dino[i] = np.mean(data['dino'], axis=0)
-        agg_clip[i] = np.mean(data['clip'], axis=0)
-
-    print(f"✅ Aggregation complete. Original points: {len(points)}, Aggregated points: {num_voxels}")
-    return {
-        "points": agg_points,
-        "colors": agg_colors,
-        "dino_features": agg_dino,
-        "clip_features": agg_clip,
-    }
-
-def filter_and_aggregate(vggt_output_gpu: dict, feature_paths: dict, proc_cfg: DictConfig) -> dict:
+@torch.no_grad()
+def process_batch_gpu(vggt_batch_gpu: dict, features_batch_gpu: dict, proc_cfg: DictConfig) -> dict:
     """
-    Moves data to CPU and processes it using NumPy, including voxel aggregation.
+    Processes a single batch of data entirely on the GPU.
     """
-    print("🚚 Moving reconstruction and feature data from GPU to CPU...")
-    # --- The main data transfer step ---
-    depth_np = vggt_output_gpu["depth_tensor"].squeeze(0).cpu().numpy()
-    extr_np = vggt_output_gpu["extrinsic_tensor"].squeeze(0).cpu().numpy()
-    intr_np = vggt_output_gpu["intrinsic_tensor"].squeeze(0).cpu().numpy()
-    confidence_np = vggt_output_gpu["confidence_tensor"].squeeze(0).cpu().numpy()
-    images_np = vggt_output_gpu["images_tensor"].squeeze(0).cpu().numpy()
+    # Reshape tensors to be (B, H, W, C)
+    depth = vggt_batch_gpu["depth_tensor"].squeeze(2) # (B, H, W)
+    confidence = vggt_batch_gpu["confidence_tensor"].squeeze(2) # (B, H, W)
+    colors = vggt_batch_gpu["images_tensor"].permute(0, 2, 3, 1) # (B, H, W, 3)
     
-     # --- Load and Correct Feature Shapes ---
-    print("🚚 Loading feature batches from disk...")
-    dino_batches = [torch.load(p) for p in tqdm(feature_paths['dino_paths'], desc="Loading DINO")]
-    clip_batches = [torch.load(p) for p in tqdm(feature_paths['clip_paths'], desc="Loading CLIP")]
-    
-    dino_features_np = torch.cat(dino_batches, dim=0).numpy()
-    clip_features_np = torch.cat(clip_batches, dim=0).numpy()
+    # Features already have the right channel order
+    dino_features = features_batch_gpu["dino_features"].permute(0, 2, 3, 1) # (B, H, W, D_dino)
+    clip_features = features_batch_gpu["clip_features"] # (B, H, W, D_clip)
 
-    # ✅ FIX 1: Transpose DINO from (N, C, H, W) to (N, H, W, C)
-    # The new order is (0, 2, 3, 1) corresponding to the original indices
-    dino_features_np = np.transpose(dino_features_np, (0, 2, 3, 1))
+    extr = vggt_batch_gpu["extrinsic_tensor"].squeeze(0) # (B, 3, 4)
+    intr = vggt_batch_gpu["intrinsic_tensor"].squeeze(0) # (B, 3, 3)
 
-    # ✅ FIX 2: Reshape CLIP from its mangled shape back to (N, H, W, C)
-    # Assuming N=13 and H=392 from the confidence shape
-    num_images = confidence_np.shape[0]
-    height = confidence_np.shape[1]
-    clip_features_np = clip_features_np.reshape(num_images, height, -1, clip_features_np.shape[-1])
+    # Project depth to points on GPU
+    world_points = unproject_depth_to_points_gpu(depth, extr, intr)
 
-    # --- Unprojection on CPU ---
-    print("🚀 Projecting depth to points on CPU...")
-    world_points = unproject_depth_map_to_point_map_numpy(depth_np, extr_np, intr_np)
-
-    # --- Flatten all NumPy arrays for processing ---
+    # Flatten all tensors
     points_flat = world_points.reshape(-1, 3)
-    colors_flat = np.transpose(images_np, (0, 2, 3, 1)).reshape(-1, 3)
-    confidence_flat = confidence_np.reshape(-1)
+    colors_flat = colors.reshape(-1, 3)
+    confidence_flat = confidence.reshape(-1)
+    dino_flat = dino_features.reshape(-1, dino_features.shape[-1])
+    clip_flat = clip_features.reshape(-1, clip_features.shape[-1])
     
-    # Now this reshape will work correctly
-    dino_features_flat = dino_features_np.reshape(-1, dino_features_np.shape[-1])
-    clip_features_flat = clip_features_np.reshape(-1, clip_features_np.shape[-1])
-    
-    
-    
-    # --- Filtering on CPU ---
-    print(f"🔍 Applying confidence filter on CPU...")
+    # --- Filtering on GPU ---
     if proc_cfg.conf_percentile > 0:
-        conf_threshold = np.percentile(confidence_flat, proc_cfg.conf_percentile)
+        conf_threshold = torch.quantile(confidence_flat.float(), proc_cfg.conf_percentile / 100.0)
         keep_mask = confidence_flat >= conf_threshold
         
-        filtered_points = points_flat[keep_mask]
-        filtered_colors = colors_flat[keep_mask]
-        filtered_dino = dino_features_flat[keep_mask]
-        filtered_clip = clip_features_flat[keep_mask]
-        
-        print(f"✅ Filtering complete. Filtered point count: {len(filtered_points)}")
-    else:
-        filtered_points, filtered_colors = points_flat, colors_flat
-        filtered_dino, filtered_clip = dino_features_flat, clip_features_flat
+        if not torch.any(keep_mask):
+            return {"points": None, "colors": None, "dino_features": None, "clip_features": None}
+            
+        points_flat = points_flat[keep_mask]
+        colors_flat = colors_flat[keep_mask]
+        dino_flat = dino_flat[keep_mask]
+        clip_flat = clip_flat[keep_mask]
 
-    # --- Voxel Aggregation on CPU ---
+    # --- Voxel Aggregation on GPU ---
     if proc_cfg.voxel_size > 0:
-        features_dict_unaggregated = {'dino': filtered_dino, 'clip': filtered_clip}
-        final_data = aggregate_points_and_features_numpy(
-            filtered_points, filtered_colors, features_dict_unaggregated, proc_cfg.voxel_size
-        )
-    else:
-        final_data = {
-            "points": filtered_points,
-            "colors": filtered_colors,
-            "dino_features": filtered_dino,
-            "clip_features": filtered_clip,
+        voxel_indices = torch.floor(points_flat / proc_cfg.voxel_size).long()
+        
+        # Use unique to find the indices for scattering
+        unique_voxels, inverse_indices = torch.unique(voxel_indices, dim=0, return_inverse=True)
+        
+        # Aggregate using torch_scatter
+        agg_points = scatter_mean(points_flat, inverse_indices, dim=0)
+        agg_colors = scatter_mean(colors_flat, inverse_indices, dim=0)
+        agg_dino = scatter_mean(dino_flat, inverse_indices, dim=0)
+        agg_clip = scatter_mean(clip_flat, inverse_indices, dim=0)
+        
+        return {
+            "points": agg_points, "colors": agg_colors,
+            "dino_features": agg_dino, "clip_features": agg_clip
         }
-    
-    return final_data
+    else:
+        return {
+            "points": points_flat, "colors": colors_flat,
+            "dino_features": dino_flat, "clip_features": clip_flat
+        }
 
 def save_artifacts(output_dir: Path, final_data_cpu: dict):
-    """Saves the final NumPy arrays to disk."""
+    """Saves the final NumPy arrays from CPU to disk."""
     print(f"💾 Saving final outputs to {output_dir}...")
     
     points_cpu = final_data_cpu['points']
     colors_cpu = final_data_cpu['colors']
 
+    if points_cpu is None or len(points_cpu) == 0:
+        print("No points to save. Skipping artifact generation.")
+        return
+
     ply_path = output_dir / "point_cloud.ply"
+    
+    # Ensure colors are in the correct format for trimesh
     if colors_cpu.max() <= 1.0:
-        colors_cpu = (colors_cpu * 255).astype(np.uint8)
+        colors_cpu = (colors_cpu * 255)
+    colors_cpu = colors_cpu.astype(np.uint8)
+
     pc = trimesh.PointCloud(vertices=points_cpu, colors=colors_cpu)
     pc.export(ply_path)
     print(f"✅ Point cloud saved to {ply_path}")

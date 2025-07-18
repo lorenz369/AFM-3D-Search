@@ -2,20 +2,14 @@ import torch
 from PIL import Image
 from typing import List, Dict
 import torchvision.transforms.functional as TF
-import numpy as np
 import gc
-import torchvision.transforms.functional as TF
-import numpy as np
 
 from vggt.models.vggt import VGGT
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 
-
-
 def _preprocess_single_image(img: Image.Image, mode: str = "crop", target_size: int = 518) -> torch.Tensor:
     """Applies the specific preprocessing steps from the original project to a single PIL image."""
     
-    # If there's an alpha channel, blend onto a white background
     if img.mode == "RGBA":
         background = Image.new("RGBA", img.size, (255, 255, 255, 255))
         img = Image.alpha_composite(background, img).convert("RGB")
@@ -24,20 +18,19 @@ def _preprocess_single_image(img: Image.Image, mode: str = "crop", target_size: 
 
     width, height = img.size
     
-    # Calculate new dimensions, ensuring they are divisible by 14
-    if mode == "pad":
+    if mode == "crop":
+        new_width = target_size
+        new_height = round(height * (new_width / width) / 14) * 14
+    else: # mode == "pad"
         if width >= height:
             new_width = target_size
             new_height = round(height * (new_width / width) / 14) * 14
         else:
             new_height = target_size
             new_width = round(width * (new_height / height) / 14) * 14
-    else:  # mode == "crop"
-        new_width = target_size
-        new_height = round(height * (new_width / width) / 14) * 14
 
     img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
-    img_tensor = TF.to_tensor(img)  # Convert to tensor (0, 1)
+    img_tensor = TF.to_tensor(img) 
 
     if mode == "crop" and new_height > target_size:
         img_tensor = TF.center_crop(img_tensor, [target_size, target_size])
@@ -56,22 +49,20 @@ def _preprocess_single_image(img: Image.Image, mode: str = "crop", target_size: 
             
     return img_tensor
 
-
-# --- Main function for the pipeline ---
 def run_vggt(pil_images: List[Image.Image], device: str, dtype: torch.dtype) -> Dict:
     """
-    Runs VGGT reconstruction and returns a dictionary of raw GPU tensors.
+    Runs VGGT reconstruction on all images and returns a dictionary of raw GPU tensors.
+    The model is cleared from VRAM after this step.
     """
     print(f"🔄 Initializing VGGT model on {device}...")
     vggt_model = VGGT()
-    vggt_model.load_state_dict(torch.hub.load_state_dict_from_url("https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt", map_location=device))
+    vggt_model.load_state_dict(torch.hub.load_state_dict_from_url("https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt", map_location="cpu"))
     vggt_model.eval().to(device)
 
-    # Preprocess all images using our new helper function
     print("Pre-processing images with original project logic...")
     processed_images = [_preprocess_single_image(img, mode="crop") for img in pil_images]
-
-    # Stacking logic to handle potentially different shapes after processing
+    
+    # Pad images to the same size if necessary
     shapes = {img.shape for img in processed_images}
     if len(shapes) > 1:
         print(f"Warning: Found images with different shapes after processing: {shapes}. Padding to match.")
@@ -92,8 +83,7 @@ def run_vggt(pil_images: List[Image.Image], device: str, dtype: torch.dtype) -> 
             padded_images.append(img)
         processed_images = padded_images
 
-    # Create the final batch tensor for the model
-    images_tensor = torch.stack(processed_images).unsqueeze(0).to(device)
+    images_tensor = torch.stack(processed_images).unsqueeze(0).to(device, dtype=dtype)
 
     print("🚀 Running VGGT Inference...")
     with torch.no_grad(), torch.cuda.amp.autocast(dtype=dtype):
@@ -103,9 +93,11 @@ def run_vggt(pil_images: List[Image.Image], device: str, dtype: torch.dtype) -> 
     B, S, C, H, W = predictions["images"].shape
     extrinsic, intrinsic = pose_encoding_to_extri_intri(predictions["pose_enc"], (H, W))
 
+    # Clean up model to free VRAM for the next phase
     print("🧹 Cleaning up VGGT model from GPU memory...")
     del vggt_model, images_tensor
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return {
         "depth_tensor": predictions["depth"],
