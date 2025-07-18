@@ -34,8 +34,8 @@ def main(cfg: MainConfig) -> None:
     pil_images = [Image.open(p).convert("RGB") for p in image_paths]
 
     vggt_output_gpu = reconstruction.run_vggt(pil_images, device, dtype)
-    features_gpu = feature_extraction.run(pil_images, vggt_output_gpu, cfg, device)
-    final_data_cpu = processing.filter_and_aggregate(vggt_output_gpu, features_gpu, cfg.processing)
+    feature_paths = feature_extraction.run(pil_images, vggt_output_gpu, cfg, device, output_dir)
+    final_data_cpu = processing.filter_and_aggregate(vggt_output_gpu, feature_paths, cfg.processing)
     processing.save_artifacts(output_dir, final_data_cpu)
     
     print(f"--- ✅ Successfully Processed Scene: {cfg.scene_id} ---")

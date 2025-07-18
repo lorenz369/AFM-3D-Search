@@ -19,8 +19,8 @@ outputs/
 multirun/
 
 # Data Handling
-data/output/
-data/staging/
+data/
+data/
 jobs/
 
 # Python Build Artifacts

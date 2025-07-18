@@ -139,3 +139,9 @@ This command starts the background worker, which polls for new jobs created by t
 python src/afm_3d_search/worker.py
 ```
 Once both services are running, you can `POST` multiple image files to the `http://localhost:8000/v1/scenes` endpoint to create a new processing job.
+
+##### **Terminal 3 (only local): Start the Tunnel**
+
+```
+ssh -L 0.0.0.0:8080:localhost:8000 atcremersXX.in.tum.de
+```

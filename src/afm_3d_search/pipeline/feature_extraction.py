@@ -84,10 +84,13 @@ class _MaskEmbeddingFeatureImageGenerator:
 
 
 # --- Main Feature Extraction Functions ---
-def extract_dino_features_from_pil(pil_images, dino_version, target_height, target_width, device, batch_size):
+def extract_dino_features_from_pil(pil_images, dino_version, target_height, target_width, device, batch_size, output_dir):
 
     print(f"🦖 Initializing DINOv2 model ({dino_version})...")
     dinov2_model = torch.hub.load('facebookresearch/dinov2', dino_version, verbose=False).to(device).eval()
+
+    temp_features_dir = output_dir / "temp_dino_features"
+    temp_features_dir.mkdir(parents=True, exist_ok=True)
 
     dino_transforms = transforms.Compose([
         transforms.Resize((target_height, target_width)),
@@ -95,7 +98,7 @@ def extract_dino_features_from_pil(pil_images, dino_version, target_height, targ
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    all_features = []
+    feature_file_paths = []
     print(f"🦖 Extracting DINOv2 features from {len(pil_images)} images...")
     with torch.no_grad():
         for i in tqdm(range(0, len(pil_images), batch_size), desc="DINOv2 Batches"):
@@ -113,13 +116,16 @@ def extract_dino_features_from_pil(pil_images, dino_version, target_height, targ
             upsampled_features = torch.nn.functional.interpolate(
                 feature_map_2d, size=(target_height, target_width), mode='bilinear', align_corners=False
             )
-            all_features.append(upsampled_features)
-
+            batch_filepath = temp_features_dir / f"batch_{i}.pt"
+            torch.save(upsampled_features.cpu(), batch_filepath) # Move to CPU and save
+            feature_file_paths.append(batch_filepath)
     del dinov2_model
-    final_tensor = torch.cat(all_features, dim=0)
-    return final_tensor.permute(0, 2, 3, 1)
+    torch.cuda.empty_cache()
 
-def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint_filename, target_height, target_width, device, batch_size):
+    return feature_file_paths 
+
+
+def extract_clip_features_from_pil(pil_images: List[Image.Image], clip_version: str, sam_checkpoint_filename: str, target_height: int, target_width: int, device: str, output_dir: Path) -> List[Path]:
     print("📎 Initializing SAM and CLIP models...")
     
     WEIGHTS_DIR = Path("weights")
@@ -134,34 +140,51 @@ def extract_clip_features_from_pil(pil_images, clip_version, sam_checkpoint_file
     clip_encoder = _ClipEncoder(version=clip_version, device=device)
     feature_generator = _MaskEmbeddingFeatureImageGenerator(mask_generator, clip_encoder, device)
 
-    all_features = []
+    # --- Create a temporary directory for CLIP feature batches ---
+    temp_features_dir = output_dir / "temp_clip_features"
+    temp_features_dir.mkdir(parents=True, exist_ok=True)
+
+    feature_file_paths = []
     print(f"📎 Extracting CLIP (SAM-blended) features from {len(pil_images)} images...")
     with torch.no_grad():
-        for image in tqdm(pil_images, desc="CLIP Batches"):
+        for i, image in enumerate(tqdm(pil_images, desc="CLIP Features")):
             resized_image = image.resize((target_width, target_height))
+            # Generate the feature tensor for the single image
             feature_tensor = feature_generator.generate_features(np.array(resized_image))
-            all_features.append(feature_tensor)
+            
+            # ❌ INSTEAD OF THIS:
+            # all_features.append(feature_tensor)
+
+            # ✅ DO THIS:
+            # Define a unique path for the current image's features
+            image_filepath = temp_features_dir / f"image_{i}.pt"
+            # Move tensor to CPU, save it to disk, and store the path
+            torch.save(feature_tensor.cpu(), image_filepath)
+            feature_file_paths.append(image_filepath)
 
     del sam_model, mask_generator, clip_encoder, feature_generator
-    return torch.stack(all_features, dim=0)
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    return feature_file_paths
 
 
 # --- Main Run Function ---
-def run(pil_images: List[Image.Image], vggt_output: Dict, cfg: DictConfig, device: str) -> Dict:
+def run(pil_images: List[Image.Image], vggt_output: Dict, cfg: DictConfig, device: str,  output_dir) -> Dict:
     """Extracts all configured features and returns them as GPU tensors."""
     
-    dino_features_gpu = extract_dino_features_from_pil(
-        pil_images, cfg.models.dino.version, vggt_output['height'], vggt_output['width'], device, cfg.processing.dino_batch_size
+    dino_paths = extract_dino_features_from_pil(
+        pil_images, cfg.models.dino.version, vggt_output['height'], vggt_output['width'], device, cfg.processing.dino_batch_size, output_dir
     )
     
-    clip_features_gpu = extract_clip_features_from_pil(
-        pil_images, cfg.models.clip.version, cfg.models.sam.checkpoint, vggt_output['height'], vggt_output['width'], device, cfg.processing.clip_batch_size
+    clip_paths = extract_clip_features_from_pil(
+        pil_images, cfg.models.clip.version, cfg.models.sam.checkpoint, vggt_output['height'], vggt_output['width'], device, output_dir
     )
 
     gc.collect()
     torch.cuda.empty_cache()
     
     return {
-        "dino": dino_features_gpu,
-        "clip": clip_features_gpu
+        "dino_paths": dino_paths,
+        "clip_paths": clip_paths
     }

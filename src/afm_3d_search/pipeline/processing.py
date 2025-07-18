@@ -75,7 +75,7 @@ def aggregate_points_and_features_numpy(points, colors, features_dict, voxel_siz
         "clip_features": agg_clip,
     }
 
-def filter_and_aggregate(vggt_output_gpu: dict, features_gpu: dict, proc_cfg: DictConfig) -> dict:
+def filter_and_aggregate(vggt_output_gpu: dict, feature_paths: dict, proc_cfg: DictConfig) -> dict:
     """
     Moves data to CPU and processes it using NumPy, including voxel aggregation.
     """
@@ -87,9 +87,24 @@ def filter_and_aggregate(vggt_output_gpu: dict, features_gpu: dict, proc_cfg: Di
     confidence_np = vggt_output_gpu["confidence_tensor"].squeeze(0).cpu().numpy()
     images_np = vggt_output_gpu["images_tensor"].squeeze(0).cpu().numpy()
     
-    dino_features_np = features_gpu['dino'].cpu().numpy()
-    clip_features_np = features_gpu['clip'].cpu().numpy()
+     # --- Load and Correct Feature Shapes ---
+    print("🚚 Loading feature batches from disk...")
+    dino_batches = [torch.load(p) for p in tqdm(feature_paths['dino_paths'], desc="Loading DINO")]
+    clip_batches = [torch.load(p) for p in tqdm(feature_paths['clip_paths'], desc="Loading CLIP")]
     
+    dino_features_np = torch.cat(dino_batches, dim=0).numpy()
+    clip_features_np = torch.cat(clip_batches, dim=0).numpy()
+
+    # ✅ FIX 1: Transpose DINO from (N, C, H, W) to (N, H, W, C)
+    # The new order is (0, 2, 3, 1) corresponding to the original indices
+    dino_features_np = np.transpose(dino_features_np, (0, 2, 3, 1))
+
+    # ✅ FIX 2: Reshape CLIP from its mangled shape back to (N, H, W, C)
+    # Assuming N=13 and H=392 from the confidence shape
+    num_images = confidence_np.shape[0]
+    height = confidence_np.shape[1]
+    clip_features_np = clip_features_np.reshape(num_images, height, -1, clip_features_np.shape[-1])
+
     # --- Unprojection on CPU ---
     print("🚀 Projecting depth to points on CPU...")
     world_points = unproject_depth_map_to_point_map_numpy(depth_np, extr_np, intr_np)
@@ -98,8 +113,12 @@ def filter_and_aggregate(vggt_output_gpu: dict, features_gpu: dict, proc_cfg: Di
     points_flat = world_points.reshape(-1, 3)
     colors_flat = np.transpose(images_np, (0, 2, 3, 1)).reshape(-1, 3)
     confidence_flat = confidence_np.reshape(-1)
+    
+    # Now this reshape will work correctly
     dino_features_flat = dino_features_np.reshape(-1, dino_features_np.shape[-1])
     clip_features_flat = clip_features_np.reshape(-1, clip_features_np.shape[-1])
+    
+    
     
     # --- Filtering on CPU ---
     print(f"🔍 Applying confidence filter on CPU...")

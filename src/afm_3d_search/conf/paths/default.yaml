@@ -1,5 +1,5 @@
 # conf/paths/default.yaml
 
-data_root: "/workspace/AFM-3D-Search/data"
+data_root: "data"
 raw_dir_name: "testing"
 completed_dir_name: "completed"
