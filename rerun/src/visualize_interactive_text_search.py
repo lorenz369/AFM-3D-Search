@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import rerun as rr
+import time  # Add this import at the top of the file
 
 from src.clip_encoder import ClipEncoder
 from src.visualize_featurized_pointcloud import (
@@ -310,7 +311,9 @@ def cluster_points_by_dino_features(points, dino_features, indices, n_clusters='
     # Determine number of clusters
     if n_clusters == 'auto':
         # Use elbow method or estimate based on data size
-        n_clusters = min(max(2, len(indices) // 20), 8)
+        n_clusters_int = min(max(2, len(indices) // 20), 8)
+    else:
+        n_clusters_int = int(n_clusters)
     
     try:
         from sklearn.cluster import KMeans
@@ -320,11 +323,11 @@ def cluster_points_by_dino_features(points, dino_features, indices, n_clusters='
         best_clusters = 2
         best_score = -1
         
-        for k in range(2, min(n_clusters + 1, len(indices) // min_cluster_size + 1)):
+        for k in range(2, min(n_clusters_int + 1, len(indices) // min_cluster_size + 1)):
             if k >= len(indices):
                 break
                 
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
             cluster_labels = kmeans.fit_predict(combined_features)
             
             if len(np.unique(cluster_labels)) > 1:
@@ -334,7 +337,7 @@ def cluster_points_by_dino_features(points, dino_features, indices, n_clusters='
                     best_clusters = k
         
         # Final clustering with best number of clusters
-        kmeans = KMeans(n_clusters=best_clusters, random_state=42, n_init=10)
+        kmeans = KMeans(n_clusters=best_clusters, random_state=42, n_init="auto")
         cluster_labels = kmeans.fit_predict(combined_features)
         
         # Find largest clusters that meet minimum size requirement
@@ -1117,12 +1120,11 @@ class InteractiveTextSearch:
             print(f"❌ Error processing query '{query}': {e}")
             rr.log("errors/search", rr.TextLog(f"Error: {str(e)}", level=rr.TextLogLevel.ERROR))
     
-    def run_interactive_session(self, mode="local", port=9878):
+    def run_interactive_session(self, mode="local", port=9878, scripted_queries=None):
         """
-        Run the main interactive session. If self.original_pointcloud is set, visualize the original pointcloud before the featurized one.
-        Args:
-            port (int): Port to serve the Rerun gRPC server on.
-            host (str): Bind address for the server (default 'localhost'). Use '0.0.0.0' for remote access.
+        Run the main session. 
+        If scripted_queries is provided, it runs them in sequence.
+        Otherwise, it starts an interactive terminal session.
         """
         # Initialize Rerun
         rr.init("Interactive_Text_Search", spawn=False)
@@ -1197,13 +1199,13 @@ class InteractiveTextSearch:
         self._log_stat_text("stats/pointcloud/bbox_size_z", round(float(bbox_size[2]), 4))
         self._log_stat_text("stats/pointcloud/bbox_volume", round(float(np.prod(bbox_size)), 4))
         
-        if self.base_mesh_vertices is not None:
+        if self.base_mesh_vertices is not None and self.base_mesh_faces is not None:
             self._log_stat_text("stats/pointcloud/mesh_vertices", len(self.base_mesh_vertices))
             self._log_stat_text("stats/pointcloud/mesh_faces", len(self.base_mesh_faces))
         
         # Create a comprehensive pointcloud summary
         mesh_info = ""
-        if self.base_mesh_vertices is not None:
+        if self.base_mesh_vertices is not None and self.base_mesh_faces is not None:
             mesh_info = f"""
 🔺 Base Mesh: {len(self.base_mesh_vertices):,} vertices, {len(self.base_mesh_faces):,} faces"""
         
@@ -1233,72 +1235,96 @@ class InteractiveTextSearch:
         self._log_stat_text("stats/search/threshold", 0.2)
         self._log_stat_text("stats/search/top_k", 200)
         
-        # Start watchers and input
-        terminal_thread = self.start_terminal_input()
-        
         # Settings
         current_threshold = 0.2
         current_top_k = 200
         current_outlier_method = self.outlier_method
         current_use_statistical_outliers = self.use_statistical_outliers
         current_use_dino_filtering = self.use_dino_filtering
-        
-        try:
-            # Main processing loop
-            print("🚀 Interactive session started! Use Rerun viewer to see results.")
-            
-            while self.running:
-                try:
-                    # Check for new queries (with timeout)
-                    source, query = self.query_queue.get(timeout=0.5)
-                    
-                    if source == "threshold":
-                        current_threshold = query
-                        print(f"🎛️  Updated threshold to: {current_threshold}")
-                        # Re-process current query with new threshold
-                        if self.current_query:
-                            self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-                    
-                    elif source == "topk":
-                        current_top_k = query
-                        print(f"🎛️  Updated top-k to: {current_top_k}")
-                        # Re-process current query with new top-k
-                        if self.current_query:
-                            self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-                    
-                    elif source == "outlier_method":
-                        current_outlier_method = query
-                        print(f"🎛️  Updated outlier detection method to: {current_outlier_method}")
-                        # Re-process current query with new outlier method
-                        if self.current_query:
-                            self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-                    
-                    elif source == "use_statistical_outliers":
-                        current_use_statistical_outliers = query.lower() == 'true'
-                        print(f"🎛️  Statistical outlier detection: {current_use_statistical_outliers}")
-                        # Re-process current query with new outlier method
-                        if self.current_query:
-                            self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-                    
-                    elif source == "use_dino_filtering":
-                        current_use_dino_filtering = query.lower() == 'true'
-                        print(f"🎛️  DINO structural filtering: {current_use_dino_filtering}")
-                        # Re-process current query with new DINO filtering setting
-                        if self.current_query:
-                            self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
-                    
-                    else:
-                        # Regular text query
-                        self.current_query = query
-                        self.process_text_query(query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+
+        # --- SCRIPTED MODE ---
+        if scripted_queries:
+            print("🚀 Running in scripted mode...")
+            for i, query in enumerate(scripted_queries):
+                print(f"\n--- Processing query {i+1}/{len(scripted_queries)}: '{query}' ---")
+                self.process_text_query(
+                    query, 
+                    current_top_k, 
+                    current_threshold, 
+                    current_outlier_method, 
+                    current_use_statistical_outliers, 
+                    current_use_dino_filtering
+                )
+                time.sleep(2) # Pause for 2 seconds to make the timeline playback visually clear
+
+            print("\n✅ Scripted run complete. The Rerun viewer is now static.")
+            # Keep the script alive so you can explore the viewer
+            print("Press Ctrl+C to exit.")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n⏹️ Session ended.")
+
+        # --- INTERACTIVE MODE ---
+        else:
+            terminal_thread = self.start_terminal_input()
+            try:
+                # Main processing loop
+                print("🚀 Interactive session started! Use Rerun viewer to see results.")
+                
+                while self.running:
+                    try:
+                        # Check for new queries (with timeout)
+                        source, query = self.query_queue.get(timeout=0.5)
                         
-                except queue.Empty:
-                    continue
-                except KeyboardInterrupt:
-                    break
-                    
-        except KeyboardInterrupt:
-            print("\n⏹️  Interactive session interrupted")
-        finally:
-            self.running = False
-            print("🛑 Interactive session ended") 
+                        if source == "threshold":
+                            current_threshold = query
+                            print(f"🎛️  Updated threshold to: {current_threshold}")
+                            # Re-process current query with new threshold
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        elif source == "topk":
+                            current_top_k = query
+                            print(f"🎛️  Updated top-k to: {current_top_k}")
+                            # Re-process current query with new top-k
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        elif source == "outlier_method":
+                            current_outlier_method = query
+                            print(f"🎛️  Updated outlier detection method to: {current_outlier_method}")
+                            # Re-process current query with new outlier method
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        elif source == "use_statistical_outliers":
+                            current_use_statistical_outliers = query.lower() == 'true'
+                            print(f"🎛️  Statistical outlier detection: {current_use_statistical_outliers}")
+                            # Re-process current query with new outlier method
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        elif source == "use_dino_filtering":
+                            current_use_dino_filtering = query.lower() == 'true'
+                            print(f"🎛️  DINO structural filtering: {current_use_dino_filtering}")
+                            # Re-process current query with new DINO filtering setting
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        else:
+                            # Regular text query
+                            self.current_query = query
+                            self.process_text_query(query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                            
+                    except queue.Empty:
+                        continue
+                    except KeyboardInterrupt:
+                        break
+                        
+            except KeyboardInterrupt:
+                print("\n⏹️  Interactive session interrupted")
+            finally:
+                self.running = False
+                print("🛑 Interactive session ended") 

@@ -45,12 +45,20 @@ def main(cfg: DictConfig) -> None:
             original_pointcloud=getattr(cfg, "original_pointcloud", None),
             config=cfg,
         )
+
+        # Determine if running in scripted or interactive mode
+        scripted_queries = None
+        if "scripted_run" in cfg and cfg.scripted_run.get("enabled", False):
+            scripted_queries = cfg.scripted_run.get("queries", [])
+
         # ---------------------------------------------------------------------
         # 3. Serve the Rerun stream on the configured port
         # ---------------------------------------------------------------------
         port = cfg.server.port if "server" in cfg and "port" in cfg.server else 9878
         mode = cfg.server.mode if "server" in cfg and "mode" in cfg.server else "local"
-        viewer.run_interactive_session(mode=mode, port=port)
+        
+        # Pass the scripted queries to the run session
+        viewer.run_interactive_session(mode=mode, port=port, scripted_queries=scripted_queries)
     else:
         # Only visualize the original pointcloud if provided
         if getattr(cfg, "original_pointcloud", None):
