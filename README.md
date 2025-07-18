@@ -39,11 +39,11 @@ Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub
 
 | Server | SSH Command | RAM | GPU VRAM | Notes |
 |--------|-------------|-----|----------|-------|
-| atcremers45 | `ssh -p 58022 s0125@atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
-| atcremers71 | `ssh -p 58022 s0125@atcremers71.in.tum.de` | 64 GB | 16 GB | |
-| atcremers72 | `ssh -p 58022 s0125@atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
-| devcube1 | `ssh -p 58022 s0125@devcube1.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
-| devcube2 | `ssh -p 58022 s0125@devcube2.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
+| atcremers45 | `ssh atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
+| atcremers71 | `ssh atcremers71.in.tum.de` | 64 GB | 16 GB | |
+| atcremers72 | `ssh atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
+| devcube1 | `ssh devcube1.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
+| devcube2 | `ssh devcube2.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
 
 Copy stuff to server (example)
 ```bash
@@ -58,7 +58,7 @@ rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremer
 
 ## Port Forwarding
 ```
-ssh -L 9878:localhost:9878 -p 58022 s0125@devcube1.cvai.cit.tum.de
+ssh -L 9878:localhost:9878 atcremers45.in.tum.de
 ssh -L 9878:localhost:9878 runpod
 ```
 
