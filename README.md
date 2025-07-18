@@ -127,6 +127,23 @@ python rerun/run_interactive.py pointcloud_dir=<path/to/featurized/pt/files> fil
 python rerun/run_interactive.py pointcloud_dir=../data/output/arkit_scenes/raw/featurized/ file_type=42447230
 ```
 
+**Remote Mode & Port Forwarding:**
+
+If you are running the script in `remote` server mode, you need to connect to the gRPC server from your local machine:
+
+1. **Establish SSH port forwarding:**
+   ```bash
+   ssh -L {port}:localhost:{port} {user}@{server-ip}
+   ```
+   Replace `{port}` with the port number (e.g., 9878), `{user}` with your username, and `{server-ip}` with the server address.
+
+2. **Connect to the gRPC server locally:**
+   After starting the script in remote mode and establishing port forwarding, run:
+   ```bash
+   rerun --connect localhost:{port}/proxy
+   ```
+   This will connect your local Rerun viewer to the remote gRPC server via the forwarded port.
+
 **Controls (in the terminal window):**
 - Type search queries and press Enter (e.g., `chair`, `red sofa`)
 - Type `clear` to remove highlights
