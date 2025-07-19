@@ -33,6 +33,140 @@ from src.visualize_featurized_pointcloud import (
     load_original_pointcloud,
 )
 
+def detect_similarity_outliers_enhanced(similarities, dino_features=None, points=None, method='adaptive', 
+                                       min_threshold=0.1, percentile_threshold=95, iqr_multiplier=2.5, 
+                                       z_score_threshold=2.0, min_points=5, dino_weight=0.3):
+    """
+    Enhanced outlier detection that leverages DINO features for better structural coherence.
+    Step 1: Finds 1,000 initial points with high CLIP similarity
+    Step 2: Analyzes DINO features to find structural patterns
+    Step 3: Checks 3D spatial relationships
+    Step 4: Combines semantic + structural scores
+    Step 5: Returns ~250 points (top 25%) that form coherent structures
+
+    Args:
+        similarities: numpy array of similarity scores
+        dino_features: numpy array [N, D] - DINO features (optional)
+        points: numpy array [N, 3] - 3D point coordinates (optional)
+        method: 'iqr', 'percentile', 'z_score', 'adaptive', 'combined', or 'enhanced_adaptive'
+        min_threshold: minimum similarity to consider (filters noise)
+        percentile_threshold: percentile threshold for percentile method
+        iqr_multiplier: multiplier for IQR method
+        z_score_threshold: threshold for z-score method
+        min_points: minimum number of points to return
+        dino_weight: weight for DINO structural coherence (0-1)
+    
+    Returns:
+        outlier_indices: indices of outlier points
+        threshold_used: the actual threshold that was applied
+        method_used: the method that was actually used
+        stats: dictionary with statistical information
+    """
+    
+    # Filter out very low similarities first
+    valid_mask = similarities >= min_threshold
+    valid_similarities = similarities[valid_mask]
+    valid_indices = np.where(valid_mask)[0]
+    
+    if len(valid_similarities) == 0:
+        return np.array([]), min_threshold, 'none', {}
+    
+    # Calculate statistical measures
+    mean_sim = np.mean(valid_similarities)
+    median_sim = np.median(valid_similarities)
+    std_sim = np.std(valid_similarities)
+    q25, q75 = np.percentile(valid_similarities, [25, 75])
+    iqr = q75 - q25
+    
+    stats = {
+        'mean': mean_sim,
+        'median': median_sim,
+        'std': std_sim,
+        'q25': q25,
+        'q75': q75,
+        'iqr': iqr,
+        'min': valid_similarities.min(),
+        'max': valid_similarities.max(),
+        'count': len(valid_similarities)
+    }
+    
+    if method == 'enhanced_adaptive':
+        # Enhanced adaptive method that considers DINO structural coherence
+        if dino_features is not None and points is not None and len(valid_indices) > min_points:
+            # Get initial outliers using standard adaptive method
+            initial_outliers, _, _, _ = detect_similarity_outliers(
+                similarities, method='adaptive', min_threshold=min_threshold,
+                percentile_threshold=percentile_threshold, iqr_multiplier=iqr_multiplier,
+                z_score_threshold=z_score_threshold, min_points=min_points
+            )
+            
+            if len(initial_outliers) > 0:
+                # Calculate DINO structural coherence for initial outliers
+                outlier_dino_features = dino_features[initial_outliers]
+                outlier_points = points[initial_outliers]
+                
+                # Normalize DINO features
+                dino_norms = np.linalg.norm(outlier_dino_features, axis=1, keepdims=True)
+                dino_norms[dino_norms == 0] = 1e-8
+                normalized_dino = outlier_dino_features / dino_norms
+                
+                # Calculate DINO feature similarity matrix
+                dino_similarities = np.dot(normalized_dino, normalized_dino.T)
+                
+                # Calculate spatial proximity matrix (Closer points = higher similarity)
+                from scipy.spatial.distance import cdist
+                spatial_distances = cdist(outlier_points, outlier_points)
+                spatial_similarities = 1.0 / (1.0 + spatial_distances)
+                
+                # Combine DINO and spatial coherence (default: 70% dino, 30% spatial)
+                structural_coherence = (dino_weight * dino_similarities + 
+                                      (1 - dino_weight) * spatial_similarities)
+                
+                # Calculate average structural coherence for each point
+                avg_coherence = np.mean(structural_coherence, axis=1)
+                
+                # Get similarity scores for outliers
+                outlier_similarities = similarities[initial_outliers]
+                 
+                # Combine semantic similarity with structural coherence (default: 70% clip, 30% dino)
+                combined_scores = (0.7 * outlier_similarities + 0.3 * avg_coherence)
+                
+                # Find points with high combined scores
+                coherence_threshold = np.percentile(combined_scores, 75)  # Top 25% by combined score
+                high_coherence_mask = combined_scores >= coherence_threshold
+                
+                final_outlier_indices = initial_outliers[high_coherence_mask]
+                
+                stats.update({
+                    'enhanced_adaptive': True,
+                    'initial_outliers': len(initial_outliers),
+                    'final_outliers': len(final_outlier_indices),
+                    'coherence_threshold': coherence_threshold,
+                    'dino_weight': dino_weight,
+                    'avg_coherence_range': [avg_coherence.min(), avg_coherence.max()],
+                    'combined_score_range': [combined_scores.min(), combined_scores.max()]
+                })
+                
+                if len(final_outlier_indices) >= min_points:
+                    threshold = similarities[final_outlier_indices].min()
+                    method_used = 'enhanced_adaptive'
+                    return final_outlier_indices, threshold, method_used, stats
+        
+        # Fall back to standard adaptive if DINO features not available or insufficient results
+        return detect_similarity_outliers(
+            similarities, method='adaptive', min_threshold=min_threshold,
+            percentile_threshold=percentile_threshold, iqr_multiplier=iqr_multiplier,
+            z_score_threshold=z_score_threshold, min_points=min_points
+        )
+    
+    else:
+        # Use standard outlier detection methods
+        return detect_similarity_outliers(
+            similarities, method=method, min_threshold=min_threshold,
+            percentile_threshold=percentile_threshold, iqr_multiplier=iqr_multiplier,
+            z_score_threshold=z_score_threshold, min_points=min_points
+        )
+
 def detect_similarity_outliers(similarities, method='adaptive', min_threshold=0.1, 
                               percentile_threshold=95, iqr_multiplier=2.5, 
                               z_score_threshold=2.0, min_points=5):
@@ -226,8 +360,10 @@ def create_statistical_text_similarity_highlights(points, clip_features, text_qu
     print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
     
     # Apply statistical outlier detection
-    outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers(
+    outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers_enhanced(
         similarities, 
+        dino_features=None,
+        points=None,
         method=outlier_method,
         min_threshold=min_threshold,
         percentile_threshold=percentile_threshold,
@@ -437,7 +573,7 @@ def create_hybrid_clip_dino_highlights(points, clip_features, dino_features, tex
         print("📈 DINO filtering disabled - using CLIP-only approach")
     
     # Step 1: Get CLIP semantic outliers (reuse existing function)
-    clip_outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers(
+    clip_outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers_enhanced(
         np.dot(
             clip_features / (np.linalg.norm(clip_features, axis=1, keepdims=True) + 1e-8),
             clip_encoder.encode_text(text_query).cpu().numpy().T / np.linalg.norm(clip_encoder.encode_text(text_query).cpu().numpy())
@@ -519,6 +655,146 @@ def create_hybrid_clip_dino_highlights(points, clip_features, dino_features, tex
     
     return final_indices, highlight_points, highlight_colors, similarities, outlier_stats
 
+def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None, 
+                           dino_features=None, min_threshold=0.1, percentile_threshold=95, iqr_multiplier=2.5, 
+                           z_score_threshold=2.0, min_points=5):
+    """
+    Run all outlier detection methods simultaneously and return results for comparison.
+    
+    Args:
+        points: numpy array [N, 3] - 3D point coordinates
+        clip_features: numpy array [N, D] - CLIP features for all points
+        text_query: str - text query to search for
+        clip_encoder: CLIP encoder instance
+        dino_features: numpy array [N, D] - DINO features (optional)
+        min_threshold: minimum similarity to consider
+        percentile_threshold: percentile threshold for percentile method
+        iqr_multiplier: multiplier for IQR method
+        z_score_threshold: threshold for z-score method
+        min_points: minimum number of points to return
+    
+    Returns:
+        results: dictionary with results for each method
+        similarities: numpy array of all similarity scores
+    """
+    
+    if clip_encoder is None:
+        print("⚠️  CLIP encoder not available for text similarity highlighting")
+        return {}, np.array([])
+    
+    if clip_features is None or len(clip_features) == 0:
+        print("⚠️  No CLIP features available for text similarity highlighting")
+        return {}, np.array([])
+    
+    print(f"🔍 Computing ALL outlier methods for query: '{text_query}'")
+    
+    # Encode the text query
+    try:
+        text_features = clip_encoder.encode_text(text_query)
+        text_features = text_features.cpu().numpy()
+        text_features = text_features / np.linalg.norm(text_features, axis=1, keepdims=True)
+        print(f"✓ Text encoded to {text_features.shape}")
+        
+    except Exception as e:
+        print(f"❌ Error encoding text query: {e}")
+        return {}, np.array([])
+    
+    # Check dimension compatibility
+    clip_feature_dim = clip_features.shape[1]
+    text_feature_dim = text_features.shape[1]
+    
+    if clip_feature_dim != text_feature_dim:
+        print(f"❌ Dimension mismatch: CLIP features ({clip_feature_dim}D) vs Text features ({text_feature_dim}D)")
+        return {}, np.array([])
+    
+    # Normalize CLIP features and compute similarities
+    norms = np.linalg.norm(clip_features, axis=1, keepdims=True)
+    zero_mask = norms[:, 0] == 0
+    if np.any(zero_mask):
+        print(f"⚠️  Found {np.sum(zero_mask)} zero feature vectors, setting to small values")
+        norms[zero_mask] = 1e-8
+    
+    clip_features_norm = clip_features / norms
+    similarities = np.dot(clip_features_norm, text_features.T).flatten()
+    
+    print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
+    
+    # Define all methods to test
+    methods = ['iqr', 'percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined']
+    
+    # Color scheme for different methods
+    method_colors = {
+        'iqr': [1.0, 0.0, 0.0],        # Red
+        'percentile': [0.0, 1.0, 0.0],  # Green
+        'z_score': [0.0, 0.0, 1.0],     # Blue
+        'adaptive': [1.0, 1.0, 0.0],    # Yellow
+        'enhanced_adaptive': [1.0, 0.5, 0.0],  # Orange
+        'combined': [1.0, 0.0, 1.0]     # Magenta
+    }
+    
+    results = {}
+    
+    # Run each method
+    for method in methods:
+        print(f"🔬 Testing {method} method...")
+        
+        outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers_enhanced(
+            similarities, 
+            dino_features=dino_features,
+            points=points,
+            method=method,
+            min_threshold=min_threshold,
+            percentile_threshold=percentile_threshold,
+            iqr_multiplier=iqr_multiplier,
+            z_score_threshold=z_score_threshold,
+            min_points=min_points
+        )
+        
+        if len(outlier_indices) > 0:
+            highlight_points = points[outlier_indices]
+            highlight_similarities = similarities[outlier_indices]
+            
+            # Create gradient colors based on similarity strength
+            num_highlights = len(outlier_indices)
+            highlight_colors = np.zeros((num_highlights, 3))
+            
+            min_outlier_sim = highlight_similarities.min()
+            max_outlier_sim = highlight_similarities.max()
+            
+            base_color = method_colors[method]
+            
+            for i, sim in enumerate(highlight_similarities):
+                if max_outlier_sim > min_outlier_sim:
+                    intensity = 0.4 + 0.6 * (sim - min_outlier_sim) / (max_outlier_sim - min_outlier_sim)
+                else:
+                    intensity = 1.0
+                highlight_colors[i] = [c * intensity for c in base_color]
+            
+            results[method] = {
+                'indices': outlier_indices,
+                'points': highlight_points,
+                'colors': highlight_colors,
+                'similarities': highlight_similarities,
+                'threshold': threshold_used,
+                'method_used': method_used,
+                'stats': outlier_stats
+            }
+            
+            print(f"   ✓ {method}: {len(outlier_indices)} points, threshold: {threshold_used:.3f}")
+        else:
+            print(f"   ⚠️  {method}: No outliers found")
+            results[method] = {
+                'indices': np.array([]),
+                'points': np.array([]).reshape(0, 3),
+                'colors': np.array([]).reshape(0, 3),
+                'similarities': np.array([]),
+                'threshold': 0.0,
+                'method_used': method_used,
+                'stats': outlier_stats
+            }
+    
+    return results, similarities
+
 class InteractiveTextSearch:
     """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering.
     Optionally visualizes the original pointcloud if original_pointcloud is set.
@@ -590,7 +866,7 @@ class InteractiveTextSearch:
         #   timeline = 2  → second query, …
         #
         # This makes the built-in Time-Series View plots usable and avoids the
-        # “vertical line at 1970-01-01" problem that happens when everything
+        # "vertical line at 1970-01-01" problem that happens when everything
         # is logged at the same instant with `static=True`.
         self.query_counter = 0
         
@@ -695,23 +971,29 @@ class InteractiveTextSearch:
     def _show_help(self):
         """Show help information."""
         print("\n" + "="*70)
-        print("📚 INTERACTIVE SEARCH HELP - WITH CLIP+DINO HYBRID FILTERING")
+        print("📚 INTERACTIVE SEARCH HELP - ENHANCED ADAPTIVE METHOD")
         print("="*70)
         print("🔍 Search Commands:")
         print("  • <text>                    - Search for text (e.g., 'chair', 'red sofa')")
         print("  • clear                     - Clear all highlights")
         print("  • q                         - Quit")
         print("")
-        print("🔗 Hybrid CLIP+DINO Filtering:")
+        print("🎯 Enhanced Adaptive Method (Default):")
+        print("  • Combines CLIP semantic similarity with DINO structural coherence")
+        print("  • Automatically adapts to object size and distribution")
+        print("  • 🟠 Orange highlights show structured, coherent matches")
+        print("  • Reduces scattered points, focuses on object boundaries")
+        print("")
+        print("🔗 DINO Structural Filtering:")
         if self.has_dino_features:
             print("  • use_dino_filtering=true   - Enable DINO structural filtering (default)")
             print("  • use_dino_filtering=false  - Use CLIP-only semantic search")
             print("    ↳ DINO helps identify coherent structures vs scattered points")
-            print("    ↳ Shows both: CLIP outliers (blue) + DINO filtered (gold)")
         else:
             print("  • DINO features not available - using CLIP-only mode")
         print("")
-        print("📈 Statistical Outlier Detection:")
+        print("📈 Alternative Outlier Detection Methods:")
+        print("  • outlier_method=enhanced_adaptive - Enhanced adaptive with DINO (default)")
         print("  • outlier_method=adaptive   - Auto-select best method based on data")
         print("  • outlier_method=iqr        - Use IQR (Interquartile Range) method")
         print("  • outlier_method=percentile - Use percentile-based detection")
@@ -719,12 +1001,26 @@ class InteractiveTextSearch:
         print("  • outlier_method=combined   - Use combined methods")
         print("  • use_statistical_outliers=true/false - Toggle statistical mode")
         print("")
+        print("🎨 Visualization:")
+        print("  • Static RGB pointcloud: Always visible (base visualization)")
+        print("  • 🟠 Orange highlights: Enhanced adaptive search results")
+        print("  • Greyscale pointcloud: When grey_out_unmatched=true (focus mode)")
+        print("  • show_clip_features=true: Enable CLIP feature visualization")
+        print("  • show_all_methods_comparison=false: Disable all methods comparison")
+        print("")
+        print("🔬 All-Methods Comparison (Default):")
+        print("  • Shows all outlier methods simultaneously with different colors")
+        print("  • 🔴 Red: IQR | 🟢 Green: Percentile | 🔵 Blue: Z-Score")
+        print("  • 🟡 Yellow: Adaptive | 🟠 Orange: Enhanced Adaptive | 🟣 Magenta: Combined")
+        print("  • Great for method comparison and analysis")
+        print("  • Disable with: show_all_methods_comparison=false")
+        print("")
         print("🎯 Traditional Method Settings:")
         print("  • threshold=0.25            - Set fixed similarity threshold")
         print("  • topk=100                  - Set maximum number of results")
         print("")
         print("💡 Method Comparison:")
-        print("  • Hybrid CLIP+DINO: Best results - semantic + structural coherence")
+        print("  • Enhanced Adaptive: Best results - semantic + structural coherence")
         print("    - CLIP finds semantic matches, DINO filters for structures")
         print("    - Reduces scattered points, focuses on object boundaries")
         print("  • Statistical CLIP-only: Good semantic matching with outlier detection")
@@ -732,12 +1028,13 @@ class InteractiveTextSearch:
         print("  • Traditional: Fixed threshold, predictable but may need tuning")
         print("")
         print("🎮 Examples:")
-        print("  • chair                     - Basic hybrid search")
-        print("  • red wooden table          - Multi-word hybrid search")
+        print("  • chair                     - Basic enhanced adaptive search")
+        print("  • red wooden table          - Multi-word enhanced adaptive search")
         print("  • use_dino_filtering=false  - Switch to CLIP-only")
         print("  • outlier_method=iqr        - Switch outlier detection method")
         print("  • use_statistical_outliers=false - Switch to traditional")
         print("  • threshold=0.15            - Lower traditional threshold")
+        print("  • grey_out_unmatched=true   - Enable focus mode (greyscale)")
         print("="*70 + "\n")
 
     def _log_readable_stats(self, query, num_results, threshold, method_used, stats=None):
@@ -764,7 +1061,7 @@ class InteractiveTextSearch:
         rr.log("stats/search/readable", rr.TextLog(summary, level=rr.TextLogLevel.INFO), static=True)
 
     def _log_stat_text(self, path: str, value):
-        """Log a single numeric/statistic value as a timeless TextLog so it doesn’t
+        """Log a single numeric/statistic value as a timeless TextLog so it doesn't
         generate a time-series chart."""
         rr.log(path, rr.TextLog(str(value), level=rr.TextLogLevel.INFO), static=True)
     
@@ -780,10 +1077,12 @@ class InteractiveTextSearch:
             use_dino_filtering = self.use_dino_filtering
             
         if not query or not query.strip():
-            # Clear highlights
+            # Clear highlights - FOCUSED CLEANUP
             rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
+            rr.log("world/text_similarity_highlights_rgb", rr.Clear(recursive=True))
             rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
             rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
+            rr.log("world/all_methods_comparison", rr.Clear(recursive=True))
             self.last_highlight_indices = np.array([], dtype=int)  # Clear highlight indices
             # Clear search stats with better formatting
             rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
@@ -805,14 +1104,107 @@ class InteractiveTextSearch:
                 # timeline that was initialised to 0.0 in `run_interactive_session`.
                 rr.set_time("timeline", timestamp=float(self.query_counter))
 
-            # Note: for an empty query ("clear") we *don’t* advance the counter –
+            # Note: for an empty query ("clear") we *don't* advance the counter –
             # this keeps the visualised stats aligned with the last executed
             # query.
 
+            # FOCUSED APPROACH: Use only enhanced adaptive method (orange highlights)
+            print(f"🎯 Running enhanced adaptive method for '{query}'...")
+            
+            # Optional: Run all methods comparison if enabled
+            if getattr(self.config, 'show_all_methods_comparison', False):
+                print(f"🎨 Running ALL outlier methods for comparison...")
+                all_methods_results, similarities = run_all_outlier_methods(
+                    self.points,
+                    self.features_info['clip'],
+                    query,
+                    clip_encoder=self.clip_encoder,
+                    dino_features=self.features_info['dino'],
+                    min_threshold=0.05,
+                    percentile_threshold=95,
+                    iqr_multiplier=2.5,
+                    z_score_threshold=2.0,
+                    min_points=5
+                )
+                
+                # Clear previous all-methods results
+                rr.log("world/all_methods_comparison", rr.Clear(recursive=True))
+                
+                # Log each method's results with different colors
+                method_summary = []
+                total_points_found = 0
+                for method_name, result in all_methods_results.items():
+                    if len(result['points']) > 0:
+                        # Log points for this method
+                        rr.log(f"world/all_methods_comparison/{method_name}", 
+                               rr.Points3D(result['points'], colors=result['colors'], radii=0.008))
+                        
+                        # Add to summary
+                        num_points = len(result['points'])
+                        total_points_found += num_points
+                        percentage = (num_points / len(self.points)) * 100
+                        method_summary.append(f"• {method_name.upper()}: {num_points:,} points ({percentage:.1f}%) - threshold: {result['threshold']:.3f}")
+                        
+                        # Log individual method stats
+                        self._log_stat_text(f"stats/all_methods/{method_name}/num_points", num_points)
+                        self._log_stat_text(f"stats/all_methods/{method_name}/percentage", round(percentage, 2))
+                        self._log_stat_text(f"stats/all_methods/{method_name}/threshold", round(result['threshold'], 4))
+                        if len(result['similarities']) > 0:
+                            self._log_stat_text(f"stats/all_methods/{method_name}/max_similarity", round(float(result['similarities'].max()), 4))
+                            self._log_stat_text(f"stats/all_methods/{method_name}/mean_similarity", round(float(result['similarities'].mean()), 4))
+                    else:
+                        method_summary.append(f"• {method_name.upper()}: No outliers found")
+                        self._log_stat_text(f"stats/all_methods/{method_name}/num_points", 0)
+                        self._log_stat_text(f"stats/all_methods/{method_name}/percentage", 0.0)
+                        self._log_stat_text(f"stats/all_methods/{method_name}/threshold", 0.0)
+                
+                # Log summary text with legend
+                legend_text = """🎨 COLOR LEGEND:
+🔴 RED: IQR method (Interquartile Range)
+🟢 GREEN: Percentile method (top 5%)
+🔵 BLUE: Z-Score method (2 std devs)
+🟡 YELLOW: Adaptive method (auto-selected)
+🟠 ORANGE: Enhanced Adaptive (DINO + structural coherence)
+🟣 MAGENTA: Combined method (union of all)"""
+                
+                summary_text = f"""🔬 ALL OUTLIER METHODS COMPARISON: '{query}'
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Total points found across all methods: {total_points_found:,} / {len(self.points):,} points
+
+{legend_text}
+
+📈 METHOD RESULTS:
+{chr(10).join(method_summary)}
+
+💡 TIP: Toggle visibility in Rerun to compare methods side-by-side
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+                
+                rr.log("docs/all_methods_summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO))
+                
+                # Log overall comparison stats
+                self._log_stat_text("stats/all_methods/total_points_found", total_points_found)
+                self._log_stat_text("stats/all_methods/total_percentage", round((total_points_found / len(self.points)) * 100, 2))
+                
+                # Store results for potential use
+                self.all_methods_results = all_methods_results
+                self.last_similarities = similarities
+
+                # Console output for all-methods comparison
+                print(f"🎨 All outlier methods comparison completed for '{query}'")
+                print(f"   📊 Total points found: {total_points_found:,} across all methods")
+                print(f"   🎯 Check Rerun viewer for color-coded results:")
+                print(f"      🔴 Red: IQR method")
+                print(f"      🟢 Green: Percentile method") 
+                print(f"      🔵 Blue: Z-Score method")
+                print(f"      🟡 Yellow: Adaptive method")
+                print(f"      🟠 Orange: Enhanced Adaptive (DINO + structural)")
+                print(f"      🟣 Magenta: Combined method")
+                print(f"   💡 Toggle visibility in Rerun to compare methods side-by-side")
+            
             if use_statistical_outliers:
                 # Choose method based on DINO availability and user preference
                 if use_dino_filtering and self.has_dino_features:
-                    # Use hybrid CLIP+DINO approach
+                    # Use hybrid CLIP+DINO approach (enhanced adaptive)
                     highlight_indices, highlight_points, highlight_colors, similarities, outlier_stats = create_hybrid_clip_dino_highlights(
                         self.points, 
                         self.features_info['clip'], 
@@ -824,9 +1216,9 @@ class InteractiveTextSearch:
                         use_dino_filtering=True,
                         dino_spatial_weight=0.3,
                         min_cluster_size=8,
-                        highlight_color=[1.0, 0.8, 0.0]
+                        highlight_color=[1.0, 0.5, 0.0]  # Orange color for enhanced adaptive
                     )
-                    method_used = f"hybrid_clip_dino_{outlier_stats.get('method_used', outlier_method)}"
+                    method_used = f"enhanced_adaptive_{outlier_stats.get('method_used', outlier_method)}"
                 else:
                     # Use CLIP-only statistical outlier detection
                     highlight_indices, highlight_points, highlight_colors, similarities, outlier_stats = create_statistical_text_similarity_highlights(
@@ -836,7 +1228,7 @@ class InteractiveTextSearch:
                         clip_encoder=self.clip_encoder,
                         outlier_method=outlier_method,
                         min_threshold=0.05,
-                        highlight_color=[1.0, 0.8, 0.0]
+                        highlight_color=[1.0, 0.5, 0.0]  # Orange color for enhanced adaptive
                     )
                     method_used = outlier_stats.get('method_used', outlier_method) if outlier_stats else outlier_method
                 
@@ -855,7 +1247,7 @@ class InteractiveTextSearch:
                     clip_encoder=self.clip_encoder,
                     top_k=top_k,
                     similarity_threshold=threshold,
-                    highlight_color=[1.0, 0.8, 0.0]
+                    highlight_color=[1.0, 0.5, 0.0]  # Orange color for enhanced adaptive
                 )
                 
                 self.last_similarities = similarities
@@ -864,69 +1256,17 @@ class InteractiveTextSearch:
                 method_used = f"fixed_threshold_{top_k}"
             
             if len(highlight_points) > 0:
-                # Update highlights in Rerun with larger points
+                # Update highlights in Rerun with larger points - FOCUSED ON ENHANCED ADAPTIVE
                 self.last_highlight_indices = highlight_indices
-                # Always log the original yellow/gold highlights
+                # Log the enhanced adaptive highlights (orange)
                 rr.log("world/text_similarity_highlights", 
                        rr.Points3D(highlight_points, colors=highlight_colors, radii=0.01))
-                # Additionally log RGB highlights when grey_out_unmatched is enabled
-                if bool(self.config.interactive_search.grey_out_unmatched):
-                    rgb_highlight_colors = self.rgb[highlight_indices]
-                    rr.log("world/text_similarity_highlights_rgb", 
-                           rr.Points3D(highlight_points, colors=rgb_highlight_colors, radii=0.01))
-                else:
-                    # Clear RGB highlights when not needed
-                    rr.log("world/text_similarity_highlights_rgb", rr.Clear(recursive=True))
                 
-                # If using hybrid CLIP+DINO, also show the original CLIP outliers for comparison
-                if (use_statistical_outliers and use_dino_filtering and self.has_dino_features and 
-                    self.last_outlier_stats.get('dino_filtering_enabled', False)):
-                    
-                    # Show original CLIP semantic outliers in a different color (blue-ish)
-                    points_before_dino = self.last_outlier_stats.get('points_before_dino', 0)
-                    if points_before_dino > 0:
-                        # Get the original CLIP outlier indices from the similarity computation
-                        # We need to recompute this since we only stored the final filtered results
-                        text_features = self.clip_encoder.encode_text(query).cpu().numpy()
-                        text_features = text_features / np.linalg.norm(text_features)
-                        clip_features_norm = self.features_info['clip'] / (np.linalg.norm(self.features_info['clip'], axis=1, keepdims=True) + 1e-8)
-                        similarities_temp = np.dot(clip_features_norm, text_features.T).flatten()
-                        
-                        clip_outlier_indices_temp, _, _, _ = detect_similarity_outliers(
-                            similarities_temp, 
-                            method=outlier_method,
-                            min_threshold=0.05
-                        )
-                        
-                        if len(clip_outlier_indices_temp) > 0:
-                            clip_outlier_points = self.points[clip_outlier_indices_temp]
-                            clip_outlier_similarities = similarities_temp[clip_outlier_indices_temp]
-                            
-                            # Create blue gradient colors for CLIP outliers
-                            num_clip_outliers = len(clip_outlier_indices_temp)
-                            clip_outlier_colors = np.zeros((num_clip_outliers, 3))
-                            
-                            min_clip_sim = clip_outlier_similarities.min()
-                            max_clip_sim = clip_outlier_similarities.max()
-                            
-                            for i, sim in enumerate(clip_outlier_similarities):
-                                if max_clip_sim > min_clip_sim:
-                                    intensity = 0.3 + 0.7 * (sim - min_clip_sim) / (max_clip_sim - min_clip_sim)
-                                else:
-                                    intensity = 1.0
-                                # Blue color scheme for CLIP outliers
-                                clip_outlier_colors[i] = [0.2 * intensity, 0.4 * intensity, 1.0 * intensity]
-                            
-                            # Log CLIP semantic outliers
-                            rr.log("world/clip_semantic_outliers", 
-                                   rr.Points3D(clip_outlier_points, colors=clip_outlier_colors, radii=0.025))
-                            
-                            print(f"🔍 Also showing {len(clip_outlier_points)} original CLIP semantic outliers (blue)")
-                else:
-                    # Clear CLIP outliers if not using hybrid approach
-                    rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
+                # Clear redundant visualizations
+                rr.log("world/text_similarity_highlights_rgb", rr.Clear(recursive=True))
+                rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
                 
-                # Create mesh for highlighted points if mesh creation is enabled
+                # Create mesh for highlighted points if mesh creation is enabled (OPTIONAL)
                 if self.create_mesh and len(highlight_points) > 100:
                     print(f"🔺 Creating mesh for {len(highlight_points)} highlighted points...")
                     try:
@@ -994,21 +1334,20 @@ class InteractiveTextSearch:
                         
                         visualization_info = f"""
 🎨 Visualization:
-   • Blue points: {points_before:,} CLIP semantic outliers (all matches)
-   • Gold points: {points_after:,} DINO filtered results (structured matches)"""
+   • 🟠 Orange points: {points_after:,} Enhanced Adaptive results (DINO filtered)"""
                     else:
                         reason = self.last_outlier_stats.get('reason', 'unknown')
                         dino_info = f"\n🦕 DINO Filtering: Disabled ({reason})"
                         num_results = len(highlight_points)
                         visualization_info = f"""
 🎨 Visualization:
-   • Gold points: {num_results:,} CLIP semantic outliers (DINO filtering disabled)"""
+   • 🟠 Orange points: {num_results:,} Enhanced Adaptive results (DINO filtering disabled)"""
 
-                    stats_summary = f"""📊 HYBRID CLIP+DINO ANALYSIS: '{query}'
+                    stats_summary = f"""📊 ENHANCED ADAPTIVE ANALYSIS: '{query}'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 Final Results: {len(highlight_points):,} / {len(self.points):,} points ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)
-📈 CLIP Outlier Method: {method_used}
-📊 CLIP Threshold: {display_threshold:.3f} (automatically determined){dino_info}
+📈 Method: Enhanced Adaptive (CLIP + DINO structural coherence)
+📊 Threshold: {display_threshold:.3f} (automatically determined){dino_info}
 {visualization_info}
 
 📋 Similarity Distribution:
@@ -1018,7 +1357,7 @@ class InteractiveTextSearch:
 
 🎨 Highlighted Range: {similarities[highlight_indices].min():.3f} - {similarities[highlight_indices].max():.3f}
 
-💡 Hybrid CLIP+DINO combines semantic understanding with structural coherence
+💡 Enhanced Adaptive combines semantic understanding with structural coherence
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
                     
                     rr.log("docs/search_summary", rr.TextLog(stats_summary, level=rr.TextLogLevel.INFO))
@@ -1062,78 +1401,48 @@ class InteractiveTextSearch:
                         dino_info = self.last_outlier_stats.get('dino_cluster_info', {})
                         points_before = self.last_outlier_stats.get('points_before_dino', 0)
                         points_after = self.last_outlier_stats.get('points_after_dino', 0)
-                        print(f"✨ Hybrid CLIP+DINO search results for '{query}':")
-                        print(f"   CLIP outliers: {points_before} → DINO filtered: {points_after}")
-                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
-                        print(f"   Final results: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
-                        # Log compact bullet-list stats panel
-                        self._log_readable_stats(
-                            query,
-                            len(highlight_points),
-                            display_threshold,
-                            method_used,
-                            self.last_outlier_stats
-                        )
+                        reduction_pct = ((points_before - points_after) / max(points_before, 1)) * 100
+                        
+                        print(f"🎯 Enhanced Adaptive results for '{query}':")
+                        print(f"   🟠 Orange points: {len(highlight_points):,} structured matches")
+                        print(f"   📊 Method: {method_used}")
+                        print(f"   📈 Threshold: {display_threshold:.3f} (auto-determined)")
+                        print(f"   🦕 DINO filtering: {points_before:,} → {points_after:,} points ({reduction_pct:.1f}% reduction)")
+                        print(f"   🎨 Similarity range: {similarities[highlight_indices].min():.3f} - {similarities[highlight_indices].max():.3f}")
                     else:
-                        print(f"✨ Statistical outlier search results for '{query}':")
-                        print(f"   Method: {method_used}, Threshold: {display_threshold:.3f}{param_str}")
-                        print(f"   Outliers: {len(highlight_points)} ({self.last_outlier_stats.get('outlier_percentage', 0):.1f}%)")
-                        # Log compact bullet-list stats panel
-                        self._log_readable_stats(
-                            query,
-                            len(highlight_points),
-                            display_threshold,
-                            method_used,
-                            self.last_outlier_stats
-                        )
+                        print(f"🎯 Enhanced Adaptive results for '{query}':")
+                        print(f"   🟠 Orange points: {len(highlight_points):,} matches")
+                        print(f"   📊 Method: {method_used}")
+                        print(f"   📈 Threshold: {display_threshold:.3f} (auto-determined)")
+                        print(f"   🎨 Similarity range: {similarities[highlight_indices].min():.3f} - {similarities[highlight_indices].max():.3f}")
                 else:
-                    print(f"✨ Traditional search results for '{query}':")
-                    print(f"   Fixed threshold: {threshold:.3f}, Results: {len(highlight_points)}")
-                    # Log compact bullet-list stats panel
-                    self._log_readable_stats(
-                        query,
-                        len(highlight_points),
-                        display_threshold,
-                        method_used,
-                        self.last_outlier_stats if use_statistical_outliers else None
-                    )
+                    print(f"🎯 Traditional threshold results for '{query}':")
+                    print(f"   🟠 Orange points: {len(highlight_points):,} matches")
+                    print(f"   📊 Fixed threshold: {threshold:.3f}")
+                    print(f"   🎨 Similarity range: {similarities[highlight_indices].min():.3f} - {similarities[highlight_indices].max():.3f}")
+                
+                # Update adaptive pointcloud if needed
+                self.log_adaptive_pointcloud()
                 
             else:
-                # No matches found
-                rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
-                rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
-                rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
-                self.last_highlight_indices = np.array([], dtype=int)  # Clear highlight indices
-                # Log no results stats
-                rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
+                # No results found
+                print(f"❌ No matches found for '{query}'")
+                rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (no results)", level=rr.TextLogLevel.WARN))
                 self._log_stat_text("stats/search/num_results", 0)
-                self._log_stat_text("stats/search/top_similarity", round(float(similarities.max()) if len(similarities) > 0 else 0.0, 4))
-                self._log_stat_text("stats/search/mean_similarity", round(float(similarities.mean()) if len(similarities) > 0 else 0.0, 4))
-                self._log_stat_text("stats/search/threshold", round(display_threshold, 4))
+                self._log_stat_text("stats/search/top_similarity", 0.0)
+                self._log_stat_text("stats/search/mean_similarity", 0.0)
+                self._log_stat_text("stats/search/threshold", display_threshold)
                 rr.log("stats/search/detection_method", rr.TextLog(method_used))
                 
-                method_desc = "statistical" if use_statistical_outliers else "traditional"
-                no_match_summary = f"""⚠️  NO MATCHES FOR: '{query}' ({method_desc} method)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 Results: 0 / {len(self.points):,} points 
-📊 Max similarity: {similarities.max():.3f}
-📈 Detection method: {method_used}
-💡 Try: different query terms or switch detection method
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+                # Clear all highlights
+                rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
+                rr.log("world/text_similarity_highlights_rgb", rr.Clear(recursive=True))
+                rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
+                rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
+                self.last_highlight_indices = np.array([], dtype=int)
                 
-                rr.log("docs/search_summary", rr.TextLog(no_match_summary, level=rr.TextLogLevel.WARN))
-                
-                print(f"⚠️  No matches found for '{query}' using {method_desc} method")
-                print(f"   Max similarity: {similarities.max():.3f}, Method: {method_used}")
-                # Log compact bullet-list stats panel (no matches)
-                self._log_readable_stats(
-                    query,
-                    0,
-                    display_threshold,
-                    method_used,
-                    self.last_outlier_stats if use_statistical_outliers else None
-                )
-                
+                # Update adaptive pointcloud if needed
+                self.log_adaptive_pointcloud()
         except Exception as e:
             print(f"❌ Error processing query '{query}': {e}")
             rr.log("errors/search", rr.TextLog(f"Error: {str(e)}", level=rr.TextLogLevel.ERROR))
@@ -1180,10 +1489,10 @@ class InteractiveTextSearch:
         else:
             print("[Info] No original_pointcloud path provided; skipping original pointcloud visualization.")
         
-        # Log the static RGB pointcloud once (never changes)
+        # Log the static RGB pointcloud once (never changes) - ALWAYS SHOWN
         rr.log("world/pointcloud_rgb_static", rr.Points3D(self.points, colors=self.rgb, radii=0.005), static=True)
 
-        # Log the adaptive pointcloud (updates after each query)
+        # Log the adaptive pointcloud (updates after each query) - CONDITIONAL
         def log_adaptive_pointcloud():
             if bool(self.config.interactive_search.grey_out_unmatched) and hasattr(self, 'last_highlight_indices') and len(self.last_highlight_indices) > 0:
                 highlight_indices = self.last_highlight_indices
@@ -1193,14 +1502,14 @@ class InteractiveTextSearch:
                 greyscale_colors = np.stack([luminance, luminance, luminance], axis=1)
                 # Restore original RGB for highlighted points
                 greyscale_colors[highlight_indices] = rgb[highlight_indices]
-                rr.log("world/pointcloud_rgb", rr.Points3D(self.points, colors=greyscale_colors, radii=0.005))
+                rr.log("world/pointcloud_grey", rr.Points3D(self.points, colors=greyscale_colors, radii=0.005))
             else:
-                rr.log("world/pointcloud_rgb", rr.Points3D(self.points, colors=self.rgb, radii=0.005))
+                # Clear greyscale when not needed
+                rr.log("world/pointcloud_grey", rr.Clear(recursive=True))
         self.log_adaptive_pointcloud = log_adaptive_pointcloud
         self.log_adaptive_pointcloud()
 
-        
-        # Log base mesh if available
+        # Log base mesh if available (OPTIONAL - keep as user doesn't mind)
         if self.base_mesh_vertices is not None and self.base_mesh_faces is not None:
             print("🔺 Logging base mesh...")
             if self.base_mesh_colors is not None:
@@ -1216,12 +1525,16 @@ class InteractiveTextSearch:
                        static=True)
             print(f"✅ Base mesh logged: {len(self.base_mesh_vertices)} vertices, {len(self.base_mesh_faces)} faces")
         
-        # Log CLIP feature visualization
-        print("🎨 Logging CLIP feature visualization...")
-        clip_colors = features_to_colors_pca(self.features_info['clip'], method='hsv')
-        rr.log("world/pointcloud_clip_features", 
-               rr.Points3D(self.points, colors=clip_colors, radii=0.005), 
-               static=True)
+        # Log CLIP feature visualization (OPTIONAL - make configurable)
+        if getattr(self.config, 'show_clip_features', False):
+            print("🎨 Logging CLIP feature visualization...")
+            clip_colors = features_to_colors_pca(self.features_info['clip'], method='hsv')
+            rr.log("world/pointcloud_clip_features", 
+                   rr.Points3D(self.points, colors=clip_colors, radii=0.005), 
+                   static=True)
+        else:
+            print("[Info] CLIP feature visualization disabled (set show_clip_features=true to enable)")
+
         
         # Log comprehensive initial stats with better organization
         bbox_min = self.points.min(axis=0)

@@ -25,11 +25,15 @@ rendering:
   
 # Feature-to-colour mapping options
 features:
-  show_features: false
+  show_clip_features: false  # Set to true to show CLIP feature visualization
+
+# Comparison and analysis options
+comparison:
+  show_all_methods_comparison: true  # Set to false to disable all outlier methods comparison
 
 # Interactive semantic-search controls (1-to-1 with class kwargs)
 interactive_search:
-  outlier_method: "adaptive" # iqr, percentile, z_score, adaptive, combined
+  outlier_method: "enhanced_adaptive" # enhanced_adaptive, iqr, percentile, z_score, adaptive, combined
   use_statistical_outliers: true # true, false
   use_dino_filtering: true # true, false
   grey_out_unmatched: true 
