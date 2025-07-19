@@ -32,3 +32,4 @@ interactive_search:
   outlier_method: "adaptive" # iqr, percentile, z_score, adaptive, combined
   use_statistical_outliers: true # true, false
   use_dino_filtering: true # true, false
+  grey_out_unmatched: true 

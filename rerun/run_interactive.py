@@ -72,9 +72,9 @@ def main(cfg: DictConfig) -> None:
             try:
                 points, colors = load_original_pointcloud(cfg.file_type, cfg.original_pointcloud)
                 if colors is not None:
-                    rr.log("world/original_pointcloud", rr.Points3D(points, colors=colors, radii=0.008), static=True)
+                    rr.log("world/original_pointcloud", rr.Points3D(points, colors=colors, radii=0.005), static=True)
                 else:
-                    rr.log("world/original_pointcloud", rr.Points3D(points, radii=0.008), static=True)
+                    rr.log("world/original_pointcloud", rr.Points3D(points, radii=0.005), static=True)
                 print("Original pointcloud logged to rerun.")
             except Exception as e:
                 print(f"[Warning] Could not visualize original pointcloud: {e}")

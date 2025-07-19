@@ -32,3 +32,4 @@ interactive_search:
   outlier_method: "adaptive"
   use_statistical_outliers: true
   use_dino_filtering: true
+  grey_out_unmatched: true 

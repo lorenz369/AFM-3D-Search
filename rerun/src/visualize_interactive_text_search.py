@@ -674,6 +674,9 @@ class InteractiveTextSearch:
                         elif query.lower().startswith('use_dino_filtering='):
                             use_dino_filtering = query.split('=')[1].lower() == 'true'
                             self.query_queue.put(("use_dino_filtering", use_dino_filtering))
+                        elif query.lower().startswith('grey_out_unmatched='):
+                            grey_out_unmatched = query.split('=')[1].lower() == 'true'
+                            self.query_queue.put(("grey_out_unmatched", grey_out_unmatched))
                         else:
                             self.query_queue.put(("terminal", query))
                             print(f"🔍 Searching for: '{query}'")
@@ -781,7 +784,7 @@ class InteractiveTextSearch:
             rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
             rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
             rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
-            
+            self.last_highlight_indices = np.array([], dtype=int)  # Clear highlight indices
             # Clear search stats with better formatting
             rr.log("stats/search/current_query", rr.TextLog("No active search", level=rr.TextLogLevel.INFO))
             self._log_stat_text("stats/search/num_results", 0)
@@ -862,8 +865,18 @@ class InteractiveTextSearch:
             
             if len(highlight_points) > 0:
                 # Update highlights in Rerun with larger points
+                self.last_highlight_indices = highlight_indices
+                # Always log the original yellow/gold highlights
                 rr.log("world/text_similarity_highlights", 
-                       rr.Points3D(highlight_points, colors=highlight_colors, radii=0.03))
+                       rr.Points3D(highlight_points, colors=highlight_colors, radii=0.01))
+                # Additionally log RGB highlights when grey_out_unmatched is enabled
+                if bool(self.config.interactive_search.grey_out_unmatched):
+                    rgb_highlight_colors = self.rgb[highlight_indices]
+                    rr.log("world/text_similarity_highlights_rgb", 
+                           rr.Points3D(highlight_points, colors=rgb_highlight_colors, radii=0.01))
+                else:
+                    # Clear RGB highlights when not needed
+                    rr.log("world/text_similarity_highlights_rgb", rr.Clear(recursive=True))
                 
                 # If using hybrid CLIP+DINO, also show the original CLIP outliers for comparison
                 if (use_statistical_outliers and use_dino_filtering and self.has_dino_features and 
@@ -1090,7 +1103,7 @@ class InteractiveTextSearch:
                 rr.log("world/text_similarity_highlights", rr.Clear(recursive=True))
                 rr.log("world/clip_semantic_outliers", rr.Clear(recursive=True))
                 rr.log("world/highlighted_mesh", rr.Clear(recursive=True))
-                
+                self.last_highlight_indices = np.array([], dtype=int)  # Clear highlight indices
                 # Log no results stats
                 rr.log("stats/search/current_query", rr.TextLog(f"Query: '{query}' (NO MATCHES)", level=rr.TextLogLevel.WARN))
                 self._log_stat_text("stats/search/num_results", 0)
@@ -1124,6 +1137,9 @@ class InteractiveTextSearch:
         except Exception as e:
             print(f"❌ Error processing query '{query}': {e}")
             rr.log("errors/search", rr.TextLog(f"Error: {str(e)}", level=rr.TextLogLevel.ERROR))
+        finally:
+            # At the end of the method, always update the adaptive pointcloud
+            self.log_adaptive_pointcloud()
     
     def run_interactive_session(self, mode="local", port=9878, scripted_queries=None):
         """
@@ -1155,20 +1171,34 @@ class InteractiveTextSearch:
             try:
                 points, colors = load_original_pointcloud(self.file_key, self.original_pointcloud)
                 if colors is not None:
-                    rr.log("world/original_pointcloud", rr.Points3D(points, colors=colors, radii=0.008), static=True)
+                    rr.log("world/original_pointcloud", rr.Points3D(points, colors=colors, radii=0.005), static=True)
                 else:
-                    rr.log("world/original_pointcloud", rr.Points3D(points, radii=0.008), static=True)
+                    rr.log("world/original_pointcloud", rr.Points3D(points, radii=0.005), static=True)
                 print("Original pointcloud logged to rerun.")
             except Exception as e:
                 print(f"[Warning] Could not visualize original pointcloud: {e}")
         else:
             print("[Info] No original_pointcloud path provided; skipping original pointcloud visualization.")
         
-        # Log the base pointcloud
-        print("📊 Logging base pointcloud...")
-        rr.log("world/pointcloud_rgb", 
-               rr.Points3D(self.points, colors=self.rgb, radii=0.008), 
-               static=True)
+        # Log the static RGB pointcloud once (never changes)
+        rr.log("world/pointcloud_rgb_static", rr.Points3D(self.points, colors=self.rgb, radii=0.005), static=True)
+
+        # Log the adaptive pointcloud (updates after each query)
+        def log_adaptive_pointcloud():
+            if bool(self.config.interactive_search.grey_out_unmatched) and hasattr(self, 'last_highlight_indices') and len(self.last_highlight_indices) > 0:
+                highlight_indices = self.last_highlight_indices
+                # Convert all points to greyscale
+                rgb = self.rgb
+                luminance = 0.299 * rgb[:, 0] + 0.587 * rgb[:, 1] + 0.114 * rgb[:, 2]
+                greyscale_colors = np.stack([luminance, luminance, luminance], axis=1)
+                # Restore original RGB for highlighted points
+                greyscale_colors[highlight_indices] = rgb[highlight_indices]
+                rr.log("world/pointcloud_rgb", rr.Points3D(self.points, colors=greyscale_colors, radii=0.005))
+            else:
+                rr.log("world/pointcloud_rgb", rr.Points3D(self.points, colors=self.rgb, radii=0.005))
+        self.log_adaptive_pointcloud = log_adaptive_pointcloud
+        self.log_adaptive_pointcloud()
+
         
         # Log base mesh if available
         if self.base_mesh_vertices is not None and self.base_mesh_faces is not None:
@@ -1190,7 +1220,7 @@ class InteractiveTextSearch:
         print("🎨 Logging CLIP feature visualization...")
         clip_colors = features_to_colors_pca(self.features_info['clip'], method='hsv')
         rr.log("world/pointcloud_clip_features", 
-               rr.Points3D(self.points, colors=clip_colors, radii=0.008), 
+               rr.Points3D(self.points, colors=clip_colors, radii=0.005), 
                static=True)
         
         # Log comprehensive initial stats with better organization
@@ -1313,16 +1343,25 @@ class InteractiveTextSearch:
                                 self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
                         
                         elif source == "use_statistical_outliers":
-                            current_use_statistical_outliers = query.lower() == 'true'
+                            current_use_statistical_outliers = str(query).lower() == 'true'
                             print(f"🎛️  Statistical outlier detection: {current_use_statistical_outliers}")
                             # Re-process current query with new outlier method
                             if self.current_query:
                                 self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
                         
                         elif source == "use_dino_filtering":
-                            current_use_dino_filtering = query.lower() == 'true'
+                            current_use_dino_filtering = str(query).lower() == 'true'
                             print(f"🎛️  DINO structural filtering: {current_use_dino_filtering}")
                             # Re-process current query with new DINO filtering setting
+                            if self.current_query:
+                                self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
+                        
+                        elif source == "grey_out_unmatched":
+                            # Always store as boolean
+                            self.config.interactive_search.grey_out_unmatched = bool(query)
+                            print(f"🎛️  Grey out unmatched: {self.config.interactive_search.grey_out_unmatched}")
+                            # Re-log the adaptive pointcloud with the new setting
+                            self.log_adaptive_pointcloud()
                             if self.current_query:
                                 self.process_text_query(self.current_query, current_top_k, current_threshold, current_outlier_method, current_use_statistical_outliers, current_use_dino_filtering)
                         
