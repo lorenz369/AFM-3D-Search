@@ -540,8 +540,13 @@ class InteractiveTextSearch:
         
         # Load data once
         print("🔄 Loading pointcloud data...")
-        self.points, self.rgb, self.features_info = load_featurized_pointcloud(files_info[file_key])
-        
+        # Support both .pt and numpy/ply variants
+        file_entry = files_info[file_key]
+        if isinstance(file_entry, str) and file_entry.endswith('.pt'):
+            self.points, self.rgb, self.features_info = load_featurized_pointcloud(file_entry)
+        else:
+            self.points, self.rgb, self.features_info = load_featurized_pointcloud(files_info)
+
         if 'clip' not in self.features_info:
             raise ValueError("❌ No CLIP features found in pointcloud. Text search requires CLIP features.")
         
@@ -1129,12 +1134,14 @@ class InteractiveTextSearch:
         # Initialize Rerun
         rr.init("Interactive_Text_Search", spawn=False)
 
-        if mode == "remote":
+        if mode == "remote" and not getattr(self.config, 'rerun_save_enabled', False):
             uri = rr.serve_grpc(grpc_port=port)
             print(f"🌐 Rerun grpc server started on {uri}")
-        elif mode == "local":
+        elif mode == "local" and not getattr(self.config, 'rerun_save_enabled', False):
             rr.spawn(port=port)
             print(f"🌐 Rerun viewer spawned on port {port}")
+        elif getattr(self.config, 'rerun_save_enabled', False):
+            print(f"💾 Rerun recording will be saved to {getattr(self.config, 'rerun_save_path', 'output.rrd')}")
         else:
             raise ValueError(f"Invalid rerun servermode: {mode}")
         
@@ -1258,6 +1265,12 @@ class InteractiveTextSearch:
                 time.sleep(2) # Pause for 2 seconds to make the timeline playback visually clear
 
             print("\n✅ Scripted run complete. The Rerun viewer is now static.")
+            # Save the Rerun recording if enabled in config
+            if self.config is not None and getattr(self.config, 'rerun_save_enabled', False):
+                save_path = getattr(self.config, 'rerun_save_path', 'output.rrd')
+                rr.save(save_path)
+                print(f"💾 Saving Rerun recording to {save_path} ...")
+                sys.exit()
             # Keep the script alive so you can explore the viewer
             print("Press Ctrl+C to exit.")
             try:
@@ -1326,5 +1339,10 @@ class InteractiveTextSearch:
             except KeyboardInterrupt:
                 print("\n⏹️  Interactive session interrupted")
             finally:
+                # Save the Rerun recording if enabled in config
+                if self.config is not None and getattr(self.config, 'rerun_save_enabled', False):
+                    save_path = getattr(self.config, 'rerun_save_path', 'output.rrd')
+                    print(f"💾 Saving Rerun recording to {save_path} ...")
+                    rr.save(save_path)
                 self.running = False
                 print("🛑 Interactive session ended") 

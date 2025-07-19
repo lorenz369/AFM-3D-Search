@@ -11,7 +11,7 @@ from src.visualize_featurized_pointcloud import discover_featurized_files
 from src.visualize_interactive_text_search import InteractiveTextSearch
 
 
-@hydra.main(version_base="1.3", config_path="config", config_name="base_config")
+@hydra.main(version_base="1.3", config_path="config", config_name="room74")
 def main(cfg: DictConfig) -> None:
     """
     Launch the interactive text-search viewer with parameters from *cfg*.

@@ -15,6 +15,10 @@ original_pointcloud: ../data/output/arkit_scenes/raw/Training
 # Determine which .pt key/filename (without extension) to load.
 file_type: "42447230"
 
+# Rerun recording saving options
+rerun_save_enabled: false  # Set to true to save a .rrd recording
+rerun_save_path: "output.rrd"  # Path to save the .rrd file
+
 rendering:
   point_size: 0.01
   create_mesh: false       

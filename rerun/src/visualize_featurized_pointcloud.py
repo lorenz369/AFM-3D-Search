@@ -25,74 +25,132 @@ __all__ = [
 ] 
 
 def discover_featurized_files(base_dir):
-    """Auto-discover featurized pointcloud files (.pt)s in the directory."""
+    """Auto-discover featurized pointcloud files (.pt) or fallback to .npy/.ply in the directory."""
+    import os
+    import glob
     base_dir = os.path.abspath(base_dir)
     
     # Find all .pt files
     pt_files = glob.glob(os.path.join(base_dir, "*.pt"))
-    if not pt_files:
-        raise FileNotFoundError(f"No .pt files found in {base_dir}")
+    if pt_files:
+        files_info = {}
+        for pt_file in pt_files:
+            filename = os.path.basename(pt_file)
+            if 'clip' in filename.lower():
+                files_info['clip'] = pt_file
+            elif 'dino' in filename.lower():
+                files_info['dino'] = pt_file
+            elif 'combined' in filename.lower():
+                files_info['combined'] = pt_file
+            else:
+                # Generic naming
+                base_name = os.path.splitext(filename)[0]
+                files_info[base_name] = pt_file
+        print(f"Discovered featurized pointcloud files in {base_dir}:")
+        for key, path in files_info.items():
+            file_size = os.path.getsize(path) / (1024**3)  # GB
+            print(f"  {key}: {os.path.basename(path)} ({file_size:.1f} GB)")
+        return files_info
     
+    # If no .pt files, look for .npy and .ply files
+    npy_clip = os.path.join(base_dir, "clip_features.npy")
+    npy_dino = os.path.join(base_dir, "dino_features.npy")
+    ply_file = os.path.join(base_dir, "point_cloud.ply")
     files_info = {}
-    for pt_file in pt_files:
-        filename = os.path.basename(pt_file)
-        if 'clip' in filename.lower():
-            files_info['clip'] = pt_file
-        elif 'dino' in filename.lower():
-            files_info['dino'] = pt_file
-        elif 'combined' in filename.lower():
-            files_info['combined'] = pt_file
-        else:
-            # Generic naming
-            base_name = os.path.splitext(filename)[0]
-            files_info[base_name] = pt_file
+    found_any = False
+    if os.path.isfile(npy_clip):
+        files_info['clip'] = npy_clip
+        found_any = True
+    if os.path.isfile(npy_dino):
+        files_info['dino'] = npy_dino
+        found_any = True
+    if os.path.isfile(ply_file):
+        files_info['ply'] = ply_file
+        found_any = True
+    if found_any:
+        print(f"Discovered featurized numpy/ply files in {base_dir}:")
+        for key, path in files_info.items():
+            file_size = os.path.getsize(path) / (1024**3)  # GB
+            print(f"  {key}: {os.path.basename(path)} ({file_size:.1f} GB)")
+        return files_info
     
-    print(f"Discovered featurized pointcloud files in {base_dir}:")
-    for key, path in files_info.items():
-        file_size = os.path.getsize(path) / (1024**3)  # GB
-        print(f"  {key}: {os.path.basename(path)} ({file_size:.1f} GB)")
-    
-    return files_info
+    raise FileNotFoundError(f"No .pt or expected .npy/.ply files found in {base_dir}")
 
 def load_featurized_pointcloud(pt_path):
-    """Load featurized pointcloud from .pt file."""
-    print(f"Loading featurized pointcloud from {pt_path}...")
-    
-    try:
-        data = torch.load(pt_path, map_location='cpu')
+    """Load featurized pointcloud from .pt file, or from numpy/ply files if given a dict."""
+    import numpy as np
+    import open3d as o3d
+    import os
+    import torch
 
-        # Extract data
-        points = data['points'].numpy() if isinstance(data['points'], torch.Tensor) else data['points']
-        rgb = data['rgb'].numpy() if isinstance(data['rgb'], torch.Tensor) else data['rgb']
-        
-        # Ensure RGB is in [0,1] range
+    if isinstance(pt_path, dict):
+        # Numpy/PLY variant: expects keys 'clip', 'dino', 'ply'
+        files_info = pt_path
+        print(f"Loading featurized pointcloud from numpy/ply files: {files_info}")
+        # Load points and rgb from ply
+        ply_path = files_info.get('ply')
+        if ply_path is None or not os.path.isfile(ply_path):
+            raise FileNotFoundError(f"PLY file not found in files_info: {ply_path}")
+        pcd = o3d.io.read_point_cloud(ply_path)
+        points = np.asarray(pcd.points)
+        rgb = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
         if rgb.max() > 1.0:
             rgb = rgb / 255.0
-        
         features_info = {}
-        if 'features_clip' in data:
-            features_clip = data['features_clip'].numpy() if isinstance(data['features_clip'], torch.Tensor) else data['features_clip']
-            if features_clip is not None:
-                features_info['clip'] = features_clip
-                print(f"  CLIP features: {features_clip.shape}")
-            else:
-                print("  CLIP features: None")
-        
-        if 'features_dino' in data:
-            features_dino = data['features_dino'].numpy() if isinstance(data['features_dino'], torch.Tensor) else data['features_dino']
-            if features_dino is not None:
-                features_info['dino'] = features_dino
-                print(f"  DINO features: {features_dino.shape}")
-            else:
-                print("  DINO features: None")
-        
+        # Load features
+        if 'clip' in files_info and os.path.isfile(files_info['clip']):
+            features_clip = np.load(files_info['clip'])
+            features_info['clip'] = features_clip
+            print(f"  CLIP features: {features_clip.shape}")
+        else:
+            print("  CLIP features: None")
+        if 'dino' in files_info and os.path.isfile(files_info['dino']):
+            features_dino = np.load(files_info['dino'])
+            features_info['dino'] = features_dino
+            print(f"  DINO features: {features_dino.shape}")
+        else:
+            print("  DINO features: None")
         print(f"Loaded pointcloud: {points.shape[0]} points, RGB shape: {rgb.shape}")
-        
         return points, rgb, features_info
-        
-    except Exception as e:
-        print(f"Error loading {pt_path}: {e}")
-        raise
+    elif isinstance(pt_path, str) and pt_path.endswith('.pt'):
+        # Original .pt logic
+        print(f"Loading featurized pointcloud from {pt_path}...")
+        try:
+            data = torch.load(pt_path, map_location='cpu')
+            points = data['points'].numpy() if isinstance(data['points'], torch.Tensor) else data['points']
+            rgb = data['rgb'].numpy() if isinstance(data['rgb'], torch.Tensor) else data['rgb']
+            if rgb.max() > 1.0:
+                rgb = rgb / 255.0
+            features_info = {}
+            if 'features_clip' in data:
+                features_clip = data['features_clip'].numpy() if isinstance(data['features_clip'], torch.Tensor) else data['features_clip']
+                if features_clip is not None:
+                    features_info['clip'] = features_clip
+                    print(f"  CLIP features: {features_clip.shape}")
+                else:
+                    print("  CLIP features: None")
+            if 'features_dino' in data:
+                features_dino = data['features_dino'].numpy() if isinstance(data['features_dino'], torch.Tensor) else data['features_dino']
+                if features_dino is not None:
+                    features_info['dino'] = features_dino
+                    print(f"  DINO features: {features_dino.shape}")
+                else:
+                    print("  DINO features: None")
+            print(f"Loaded pointcloud: {points.shape[0]} points, RGB shape: {rgb.shape}")
+            return points, rgb, features_info
+        except Exception as e:
+            print(f"Error loading {pt_path}: {e}")
+            raise
+    elif isinstance(pt_path, str) and pt_path.endswith('.npy'):
+        # Fallback: load a single feature array (not recommended)
+        print(f"Loading features from {pt_path} (no point cloud)")
+        features = np.load(pt_path)
+        points = np.zeros((features.shape[0], 3))
+        rgb = np.zeros_like(points)
+        features_info = {'clip': features}
+        return points, rgb, features_info
+    else:
+        raise ValueError(f"Unsupported input to load_featurized_pointcloud: {pt_path}")
 
 def features_to_colors_pca(features, n_components=3, method='hsv'):
     """
