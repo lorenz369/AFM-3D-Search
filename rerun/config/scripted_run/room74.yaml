@@ -1,0 +1,11 @@
+enabled: true  # Set to true to run the queries below instead of an interactive session
+queries:
+  - "desk"
+  - "bed"
+  - "green ball"
+  - "plant"
+  - "microwave"
+  - "light bulb"
+  - "keyboard at the wall"
+  - "keyboard on the desk"
+  - "hat"

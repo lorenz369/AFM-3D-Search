@@ -12,9 +12,6 @@ Large datasets and results are available in our [Google Drive folder](https://dr
   - [CPU Usage](#cpu-usage)
   - [Disk Space](#disk-space)
   - [Debugging Session](#debugging-session)
-- [MASt3R SLAM](#mast3r-slam)
-  - [Environment Setup](#environment-setup)
-  - [Checkpoints](#checkpoints)
 - [Visualization of Point Clouds](#visualization-of-point-clouds)
   - [Environment Setup](#environment-setup-1)
   - [Usage](#usage)
@@ -35,10 +32,6 @@ git submodule update --init --recursive
 git submodule update --remote
 ```
 
-This repository includes the following open-source submodules:
-- `locate-3d`: Facebook's Locate3D library
-- `MASt3R-SLAM`: MASt3R-SLAM library
-
 ### Server Login
 Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=58022 s0125@atcremers45.in.tum.de)
 
@@ -46,25 +39,27 @@ Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub
 
 | Server | SSH Command | RAM | GPU VRAM | Notes |
 |--------|-------------|-----|----------|-------|
-| atcremers45 | `ssh -p 58022 s0125@atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
-| atcremers71 | `ssh -p 58022 s0125@atcremers71.in.tum.de` | 64 GB | 16 GB | |
-| atcremers72 | `ssh -p 58022 s0125@atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
-| devcube1 | `ssh -p 58022 s0125@devcube1.cvai.cit.tum.de` | 251 GB | 24 GB | High-end server |
-| devcube2 | `ssh -p 58022 s0125@devcube2.cvai.cit.tum.de` | 251 GB | 24 GB | High-end server |
+| atcremers45 | `ssh atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
+| atcremers71 | `ssh atcremers71.in.tum.de` | 64 GB | 16 GB | |
+| atcremers72 | `ssh atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
+| devcube1 | `ssh devcube1.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
+| devcube2 | `ssh devcube2.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
 
 Copy stuff to server (example)
 ```bash
 rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/ s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/
 ```
 
-Sync MAST3R SLAMS output (example)
+Sync data dir (example)
 ```
-rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/MASt3R-SLAM/logs/ /home/marco/Marco/AFM-3D-Search/MASt3R-SLAM/logs/
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data /home/marco/Marco/AFM-3D-Search/
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremers45.in.tum.de:~/AFM-3D-Search/
 ```
 
-Sync locate-3d preprocessing output (example)
+## Port Forwarding
 ```
-rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/ /home/marco/Marco/AFM-3D-Search/locate-3d/preprocessing/output_pointclouds/
+ssh -L 9878:localhost:9878 atcremers45.in.tum.de
+ssh -L 9878:localhost:9878 runpod
 ```
 
 ## Useful Commands
@@ -89,90 +84,9 @@ df -f
 salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:00:00 --mail-type=NONE --part=PRACT --qos=practical_course
 ```
 
-## MASt3R SLAM
-MASt3R-SLAM is included as a submodule in the `MASt3R-SLAM/` directory.
-
-### Environment Setup
-
-#### Using uv
-```bash
-# Create and activate the virtual environment
-uv venv .mast3r-slam_venv --python 3.11
-source .mast3r-slam_venv/bin/activate
-
-# Clone the repo (do this before installing local packages)
-git clone https://github.com/rmurai0610/MASt3R-SLAM.git --recursive
-cd MASt3R-SLAM/
-# if you've cloned the repo without --recursive, run this after cd MASt3R-SLAM/:
-# git submodule update --init --recursive
-
-# Install PyTorch with matching CUDA version
-# Choose one of the following based on your system's CUDA toolkit:
-
-# For CUDA 12.1 (or other CUDA 12.x versions like 12.4):
-uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-
-# Ensure build tools are present in the environment
-uv pip install --upgrade setuptools wheel cython
-
-# IMPORTANT for CUDA custom kernel compilation:
-module load cuda/12.1.1
-# OPTIONAL: Verify cuda installation path
-echo $CUDA_HOME
-# Load compatible gcc version
-module load compiler/gcc-10.1
-
-# Install dependencies
-uv pip install --no-build-isolation -e thirdparty/mast3r
-uv pip install -e thirdparty/in3d
-uv pip install --no-build-isolation -e .
-
-# Optionally install torchcodec for faster mp4 loading
-uv pip install torchcodec==0.1
-```
-
-#### Using conda
-```bash
-conda create -n mast3r-slam python=3.11
-conda activate mast3r-slam
-```
-
-Install pytorch with matching CUDA version:
-```bash
-# CUDA 11.8
-conda install pytorch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1  pytorch-cuda=11.8 -c pytorch -c nvidia
-# CUDA 12.1
-conda install pytorch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 pytorch-cuda=12.1 -c pytorch -c nvidia
-# CUDA 12.4
-conda install pytorch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 pytorch-cuda=12.4 -c pytorch -c nvidia
-```
-
-Clone and install dependencies:
-```bash
-git clone https://github.com/rmurai0610/MASt3R-SLAM.git --recursive
-cd MASt3R-SLAM/
-
-# If you've cloned the repo without --recursive run:
-git submodule update --init --recursive
-
-pip install -e thirdparty/mast3r
-pip install -e thirdparty/in3d
-pip install --no-build-isolation -e .
-```
-
-### Checkpoints
-Setup the checkpoints for MASt3R and retrieval.
-The license for the checkpoints and more information on the datasets used is written here.
-```bash
-mkdir -p checkpoints/
-wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth -P checkpoints/
-wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth -P checkpoints/
-wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl -P checkpoints/
-```
-
 ## Visualization of Point Clouds
 
-Interactive 3D visualization of MASt3R-SLAM results including PLY point clouds, camera trajectory, keyframes, and depth maps using Rerun SDK.
+Interactive 3D visualization of 3D search results and featurized point clouds using the Rerun SDK.
 
 ### Environment Setup
 
@@ -183,55 +97,109 @@ uv venv .rerun_env --python 3.11
 source .rerun_env/bin/activate
 
 # Install required packages
-uv pip install -r visualization_requirements.txt
+uv pip install -r environments/rerun_requirements.txt
 ```
+
+---
 
 ### Usage
 
-The visualization script automatically discovers and loads all SLAM results from a directory:
+#### **Interactive Text Search Visualization (Hydra-based)**
+
+The main entry point for interactive semantic search on featurized point clouds is:
 
 ```bash
-# Local visualization (opens Rerun viewer locally)
-python visualize_pointcloud.py <path/to/slam/results/directory>
-
-# Example:
-python visualize_pointcloud.py logs/depth_video2_5_sec_test
+python rerun/run_interactive.py pointcloud_dir=<path/to/featurized/pt/files> file_type=<file_key>
 ```
 
-### Script Options
+- `pointcloud_dir`: Directory containing featurized `.pt` files (REQUIRED).
+- `file_type`: Key or filename (without extension) of the `.pt` file to load (REQUIRED, e.g., `42447230`).
+- You can override any config option via CLI, e.g.:
+  - `rendering.create_mesh=true`
+  - `interactive_search.outlier_method=iqr`
+  - `interactive_search.use_dino_filtering=false`
+  - `server.port=9878`
+  - `server.mode=remote`
+- The default config is in `rerun/config/base_config.yaml`. See that file for all options.
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `slam_dir` | Path to SLAM results directory (positional argument) | Required |
-| `--mode` | Visualization mode: 'serve' or 'save' | `serve` |
-| `--remote-host` | Remote host IP for streaming | None (local) |
-| `--remote-port` | Remote port for streaming | `9876` |
+**Example:**
+```bash
+python rerun/run_interactive.py pointcloud_dir=../data/output/arkit_scenes/raw/featurized/ file_type=42447230
+```
 
-#### Additional Usage Examples
+**Remote Mode & Port Forwarding:**
+
+If you are running the script in `remote` server mode, you need to connect to the gRPC server from your local machine:
+
+1. **Establish SSH port forwarding:**
+   ```bash
+   ssh -L {port}:localhost:{port} {user}@{server-ip}
+   ```
+   Replace `{port}` with the port number (e.g., 9878), `{user}` with your username, and `{server-ip}` with the server address.
+
+2. **Connect to the gRPC server locally:**
+   After starting the script in remote mode and establishing port forwarding, run:
+   ```bash
+   rerun --connect localhost:{port}/proxy
+   ```
+   This will connect your local Rerun viewer to the remote gRPC server via the forwarded port.
+
+**Controls (in the terminal window):**
+- Type search queries and press Enter (e.g., `chair`, `red sofa`)
+- Type `clear` to remove highlights
+- Type `q` to quit
+- Type `help` for more commands and options (e.g., change outlier method, enable/disable DINO filtering, set thresholds)
+
+**Advanced CLI overrides:**
+```bash
+python rerun/run_interactive.py pointcloud_dir=... file_type=... interactive_search.outlier_method=percentile rendering.create_mesh=true
+```
+
+#### **Script Options (Hydra config keys):**
+
+| Option                                 | Description                                               | Default (base_config.yaml)         |
+|-----------------------------------------|-----------------------------------------------------------|------------------------------------|
+| `pointcloud_dir`                        | Path to featurized pointcloud `.pt` files                 | `../data/output/arkit_scenes/raw/featurized/` |
+| `file_type`                             | Key/filename (no extension) of `.pt` file to load         | `"42447230"`                      |
+| `original_pointcloud`                   | Path to original PLY pointcloud for reference             | `../data/output/arkit_scenes/raw/Training` |
+| `rendering.create_mesh`                 | Whether to create and display a mesh                      | `false`                           |
+| `interactive_search.outlier_method`     | Outlier detection method (`adaptive`, `iqr`, `percentile`, `z_score`, `combined`) | `"adaptive"`                      |
+| `interactive_search.use_statistical_outliers` | Use statistical outlier detection                        | `true`                            |
+| `interactive_search.use_dino_filtering` | Use DINO features for structural filtering                | `true`                            |
+| `server.port`                           | Port for Rerun viewer or gRPC server                      | `9878`                            |
+| `server.mode`                           | `local` (spawn viewer) or `remote` (gRPC server)          | `remote`                          |
+
+**To see all config options and their defaults, check `rerun/config/base_config.yaml`.**
+
+---
+
+#### **Legacy/Direct Script Usage**
+
+You can also run the visualization directly (bypassing Hydra/config):
 
 ```bash
-# Stream to remote Rerun viewer
-python visualize_pointcloud.py <slam_dir> --remote-host <remote_ip> --remote-port 9876
+python rerun/src/visualize_interactive_text_search.py <path/to/featurized/pt/files> --file-type <file_key>
+```
+But **using `run_interactive.py` with Hydra is recommended** for full config flexibility.
 
-# Save visualization data to file
-python visualize_pointcloud.py <slam_dir> --mode save
+---
+
+#### **MASt3R-SLAM Results Visualization**
+
+For visualizing raw SLAM outputs (PLY, trajectory, keyframes, depth maps):
+
+```bash
+python rerun/scripts/visualize_mast3r_pointcloud.py <slam_dir> [--mode serve|save] [--remote-host <ip>] [--remote-port <port>]
 ```
 
-#### Features
+---
 
-- **Automatic file discovery** from SLAM output directory
-- **Interactive 3D visualization** of point clouds with colors
-- **Camera trajectory** visualization over time
-- **Timeline scrubbing** through keyframe images
-- **Synchronized depth maps** with keyframes
-- **Remote streaming** support for visualization
-- **Timeline-based navigation** using timestamps
+### Features
 
-#### Auto-discovered Files
+- **Interactive text search** on featurized point clouds (CLIP/DINO)
+- **Automatic file discovery** from SLAM/featurized output directories
+- **3D visualization** of point clouds, camera trajectory, keyframes, depth maps
+- **Remote streaming** and local viewer support
+- **Configurable outlier detection and filtering** (see terminal `help`)
 
-The script automatically finds and loads:
-- PLY pointcloud file
-- Camera poses and timestamps
-- Camera intrinsics
-- Keyframe images (PNG format)
-- Depth maps (NPY format)
+---
