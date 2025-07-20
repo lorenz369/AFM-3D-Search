@@ -720,7 +720,7 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
     print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
     
     # Define all methods to test
-    methods = ['percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined']
+    methods = ['percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined', 'expansion']
     
     # Color scheme for different methods
     method_colors = {
@@ -729,7 +729,8 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
         'adaptive': [1.0, 1.0, 0.0],    # Yellow
         'enhanced_adaptive': [1.0, 0.5, 0.0],  # Orange
         'combined': [1.0, 0.0, 1.0],    # Magenta
-        'topk': [1.0, 0.0, 0.0]         # Red for topk
+        'topk': [1.0, 0.0, 0.0],        # Red for topk
+        'expansion': [0.0, 1.0, 1.0],   # Cyan for expansion
     }
     
     results = {}
@@ -737,7 +738,47 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
     # Run each method
     for method in methods:
         print(f"🔬 Testing {method} method...")
-        
+        if method == 'expansion':
+            if dino_features is not None:
+                expansion_indices = expand_cluster_from_top_clip_points(
+                    points, clip_features, dino_features, similarities,
+                    top_n=100, max_expansion=2000, dino_weight=0.6, spatial_weight=0.4, dino_thresh=0.6, spatial_thresh=0.18, clip_thresh=0.18
+                )
+                highlight_points = points[expansion_indices]
+                highlight_similarities = similarities[expansion_indices]
+                num_highlights = len(expansion_indices)
+                highlight_colors = np.zeros((num_highlights, 3))
+                min_sim = highlight_similarities.min() if num_highlights > 0 else 0
+                max_sim = highlight_similarities.max() if num_highlights > 0 else 1
+                base_color = method_colors['expansion']
+                for i, sim in enumerate(highlight_similarities):
+                    if max_sim > min_sim:
+                        intensity = 0.4 + 0.6 * (sim - min_sim) / (max_sim - min_sim)
+                    else:
+                        intensity = 1.0
+                    highlight_colors[i] = [c * intensity for c in base_color]
+                results['expansion'] = {
+                    'indices': expansion_indices,
+                    'points': highlight_points,
+                    'colors': highlight_colors,
+                    'similarities': highlight_similarities,
+                    'threshold': None,
+                    'method_used': 'expansion',
+                    'stats': {'num_points': num_highlights, 'top_n': 100, 'max_expansion': 2000}
+                }
+                print(f"   ✓ expansion: {num_highlights} points (top 100 CLIP, expanded)")
+            else:
+                results['expansion'] = {
+                    'indices': np.array([]),
+                    'points': np.array([]).reshape(0, 3),
+                    'colors': np.array([]).reshape(0, 3),
+                    'similarities': np.array([]),
+                    'threshold': None,
+                    'method_used': 'expansion',
+                    'stats': {'num_points': 0, 'reason': 'no_dino_features'}
+                }
+                print(f"   ⚠️  expansion: DINO features not available")
+            continue
         outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers_enhanced(
             similarities, 
             dino_features=dino_features,
@@ -749,7 +790,6 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
             z_score_threshold=z_score_threshold,
             min_points=min_points
         )
-        
         if len(outlier_indices) > 0:
             highlight_points = points[outlier_indices]
             highlight_similarities = similarities[outlier_indices]
@@ -845,7 +885,94 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
         }
         print(f"   ⚠️  topk: CLIP encoder or features missing")
     
+    if dino_features is not None:
+        if method == 'expansion':
+            expansion_indices = expand_cluster_from_top_clip_points(
+                points, clip_features, dino_features, similarities,
+                top_n=50, max_expansion=500, dino_weight=0.6, spatial_weight=0.4, dino_thresh=0.6, spatial_thresh=0.18, clip_thresh=0.18
+            )
+            highlight_points = points[expansion_indices]
+            highlight_similarities = similarities[expansion_indices]
+            num_highlights = len(expansion_indices)
+            highlight_colors = np.zeros((num_highlights, 3))
+            min_sim = highlight_similarities.min() if num_highlights > 0 else 0
+            max_sim = highlight_similarities.max() if num_highlights > 0 else 1
+            base_color = method_colors['expansion']
+            for i, sim in enumerate(highlight_similarities):
+                if max_sim > min_sim:
+                    intensity = 0.4 + 0.6 * (sim - min_sim) / (max_sim - min_sim)
+                else:
+                    intensity = 1.0
+                highlight_colors[i] = [c * intensity for c in base_color]
+            results['expansion'] = {
+                'indices': expansion_indices,
+                'points': highlight_points,
+                'colors': highlight_colors,
+                'similarities': highlight_similarities,
+                'threshold': None,
+                'method_used': 'expansion',
+                'stats': {'num_points': num_highlights, 'top_n': 50, 'max_expansion': 500}
+            }
+            print(f"   ✓ expansion: {num_highlights} points (top 50 CLIP, expanded)")
+        else:
+            results['expansion'] = {
+                'indices': np.array([]),
+                'points': np.array([]).reshape(0, 3),
+                'colors': np.array([]).reshape(0, 3),
+                'similarities': np.array([]),
+                'threshold': None,
+                'method_used': 'expansion',
+                'stats': {'num_points': 0, 'reason': 'no_dino_features'}
+            }
+            print(f"   ⚠️  expansion: DINO features not available")
+    
     return results, similarities
+
+# --- New cluster expansion method ---
+def expand_cluster_from_top_clip_points(points, clip_features, dino_features, similarities, top_n=50, max_expansion=2000, dino_weight=0.6, spatial_weight=0.4, dino_thresh=0.6, spatial_thresh=0.18, clip_thresh=0.18, k=20):
+    """
+    Region growing from top-N CLIP points with kNN, DINO, and CLIP coherence.
+    Returns indices of the expanded cluster.
+    """
+    import numpy as np
+    from sklearn.neighbors import NearestNeighbors
+    # 1. Start with top-N CLIP points
+    seed_indices = np.argsort(similarities)[-top_n:][::-1]
+    if len(seed_indices) == 0:
+        return np.array([])
+    cluster_set = set(seed_indices.tolist())
+    frontier = set(seed_indices.tolist())
+    # Precompute normalized features
+    dino_norm = dino_features / (np.linalg.norm(dino_features, axis=1, keepdims=True) + 1e-8)
+    clip_norm = clip_features / (np.linalg.norm(clip_features, axis=1, keepdims=True) + 1e-8)
+    # Build kNN graph (spatial)
+    nbrs = NearestNeighbors(n_neighbors=k, algorithm='auto').fit(points)
+    knn_indices = nbrs.kneighbors(return_distance=False)
+    # Compute cluster means for DINO and CLIP
+    def cluster_mean(indices, arr):
+        return arr[list(indices)].mean(axis=0)
+    while len(cluster_set) < max_expansion and frontier:
+        new_frontier = set()
+        cluster_dino_mean = cluster_mean(cluster_set, dino_norm)
+        cluster_clip_mean = cluster_mean(cluster_set, clip_norm)
+        for idx in frontier:
+            neighbors = knn_indices[idx]
+            for n_idx in neighbors:
+                if n_idx in cluster_set:
+                    continue
+                # DINO similarity to cluster mean
+                dino_sim = np.dot(dino_norm[n_idx], cluster_dino_mean)
+                # CLIP similarity to cluster mean
+                clip_sim = np.dot(clip_norm[n_idx], cluster_clip_mean)
+                # Spatial distance to cluster (min over cluster)
+                spatial_dist = np.linalg.norm(points[n_idx] - points[list(cluster_set)], axis=1).min()
+                if dino_sim > dino_thresh and clip_sim > clip_thresh and spatial_dist < spatial_thresh:
+                    cluster_set.add(n_idx)
+                    new_frontier.add(n_idx)
+        if not new_frontier:
+            break
+        frontier = new_frontier
+    return np.array(sorted(cluster_set))
 
 class InteractiveTextSearch:
     """Main class for interactive text search visualization with statistical outlier detection and DINO structural filtering.
