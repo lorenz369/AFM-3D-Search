@@ -1558,15 +1558,17 @@ class InteractiveTextSearch:
             print(f"✅ Base mesh logged: {len(self.base_mesh_vertices)} vertices, {len(self.base_mesh_faces)} faces")
         
         # Log CLIP feature visualization (OPTIONAL - make configurable)
-        if getattr(self.config, 'show_clip_features', False):
-            print("🎨 Logging CLIP feature visualization...")
-            clip_colors = features_to_colors_pca(self.features_info['clip'], method='hsv')
-            rr.log("world/pointcloud_clip_features", 
-                   rr.Points3D(self.points, colors=clip_colors, radii=0.005), 
+        print("🎨 Logging CLIP feature visualization...")
+        clip_colors = features_to_colors_pca(self.features_info['clip'], method='hsv')
+        rr.log("world/pointcloud_clip_features", 
+                rr.Points3D(self.points, colors=clip_colors, radii=0.005), 
                    static=True)
-        else:
-            print("[Info] CLIP feature visualization disabled (set show_clip_features=true to enable)")
-
+        # Log DINO feature visualization (OPTIONAL)
+        print("🦕 Logging DINO feature visualization...")
+        dino_colors = features_to_colors_pca(self.features_info['dino'], method='hsv')
+        rr.log("world/pointcloud_dino_features", 
+                rr.Points3D(self.points, colors=dino_colors, radii=0.005), 
+                static=True)
         
         # Log comprehensive initial stats with better organization
         bbox_min = self.points.min(axis=0)
