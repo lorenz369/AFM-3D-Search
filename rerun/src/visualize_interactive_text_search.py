@@ -23,6 +23,9 @@ from pathlib import Path
 import numpy as np
 import rerun as rr
 import time  # Add this import at the top of the file
+import torch
+import torch.nn.functional as F
+from sklearn.cluster import DBSCAN
 
 from src.clip_encoder import ClipEncoder
 from src.visualize_featurized_pointcloud import (
@@ -720,7 +723,7 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
     print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
     
     # Define all methods to test
-    methods = ['percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined', 'expansion']
+    methods = ['percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined', 'expansion', 'dino_clip_smoothing']
     
     # Color scheme for different methods
     method_colors = {
@@ -731,6 +734,7 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
         'combined': [1.0, 0.0, 1.0],    # Magenta
         'topk': [1.0, 0.0, 0.0],        # Red for topk
         'expansion': [0.0, 1.0, 1.0],   # Cyan for expansion
+        'dino_clip_smoothing': [1.0, 0.2, 0.2], # Bright red
     }
     
     results = {}
@@ -742,7 +746,7 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
             if dino_features is not None:
                 expansion_indices = expand_cluster_from_top_clip_points(
                     points, clip_features, dino_features, similarities,
-                    top_n=100, max_expansion=2000, dino_weight=0.6, spatial_weight=0.4, dino_thresh=0.6, spatial_thresh=0.18, clip_thresh=0.18
+                    top_n=50, max_expansion=2000, dino_weight=0.6, spatial_weight=0.4, dino_thresh=0.6, spatial_thresh=0.18, clip_thresh=0.18
                 )
                 highlight_points = points[expansion_indices]
                 highlight_similarities = similarities[expansion_indices]
@@ -764,9 +768,9 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
                     'similarities': highlight_similarities,
                     'threshold': None,
                     'method_used': 'expansion',
-                    'stats': {'num_points': num_highlights, 'top_n': 100, 'max_expansion': 2000}
+                    'stats': {'num_points': num_highlights, 'top_n': 50, 'max_expansion': 2000}
                 }
-                print(f"   ✓ expansion: {num_highlights} points (top 100 CLIP, expanded)")
+                print(f"   ✓ expansion: {num_highlights} points (top 50 CLIP, expanded)")
             else:
                 results['expansion'] = {
                     'indices': np.array([]),
@@ -778,6 +782,33 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
                     'stats': {'num_points': 0, 'reason': 'no_dino_features'}
                 }
                 print(f"   ⚠️  expansion: DINO features not available")
+            continue
+        elif method == 'dino_clip_smoothing':
+            if dino_features is not None:
+                # Use the first text feature vector (shape [1, D])
+                indices, highlight_points, highlight_colors, final_sim_np, threshold_used, method_used, stats = dino_guided_clip_smoothing(
+                    points, clip_features, dino_features, text_features, threshold=0.22, k=10, mix_alpha=0.5)
+                results['dino_clip_smoothing'] = {
+                    'indices': indices,
+                    'points': highlight_points,
+                    'colors': highlight_colors,
+                    'similarities': final_sim_np,  # <-- Use the returned similarities
+                    'threshold': threshold_used,
+                    'method_used': method_used,
+                    'stats': stats
+                }
+                print(f"   ✓ dino_clip_smoothing: {len(indices)} points, threshold: {threshold_used}")
+            else:
+                results['dino_clip_smoothing'] = {
+                    'indices': np.array([]),
+                    'points': np.array([]).reshape(0, 3),
+                    'colors': np.array([]).reshape(0, 3),
+                    'similarities': np.array([]),
+                    'threshold': 0.0,
+                    'method_used': 'dino_clip_smoothing',
+                    'stats': {'num_points': 0, 'reason': 'no_dino_features'}
+                }
+                print(f"   ⚠️  dino_clip_smoothing: DINO features not available")
             continue
         outlier_indices, threshold_used, method_used, outlier_stats = detect_similarity_outliers_enhanced(
             similarities, 
@@ -1188,8 +1219,9 @@ class InteractiveTextSearch:
         print("")
         print("🔬 All-Methods Comparison (Default):")
         print("  • Shows all outlier methods simultaneously with different colors")
-        print("  • 🔴 Red: IQR method (Interquartile Range) | 🟢 Green: Percentile method (top 5%) | 🔵 Blue: Z-Score method (2 std devs)")
+        print("  • 🟢 Green: Percentile method (top 5%) | 🔵 Blue: Z-Score method (2 std devs)")
         print("  • 🟡 Yellow: Adaptive method (auto-selected) | 🟠 Orange: Enhanced Adaptive (DINO + structural coherence) | 🟣 Magenta: Combined method (union of all)")
+        print("  • 🔴 Red: DINO-guided CLIP smoothing (CLIP-DINOiser)")
         print("  • Great for method comparison and analysis")
         print("  • Disable with: show_all_methods_comparison=false")
         print("")
@@ -1344,7 +1376,8 @@ class InteractiveTextSearch:
 🔵 BLUE: Z-Score method (2 std devs)
 🟡 YELLOW: Adaptive method (auto-selected)
 🟠 ORANGE: Enhanced Adaptive (DINO + structural coherence)
-🟣 MAGENTA: Combined method (union of all)"""
+🟣 MAGENTA: Combined method (union of all)
+🟥 BRIGHT RED: DINO-guided CLIP smoothing (CLIP-DINOiser)"""
             
             summary_text = f"""🔬 ALL OUTLIER METHODS COMPARISON: '{query}'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1374,6 +1407,7 @@ class InteractiveTextSearch:
             print(f"      🟡 Yellow: Adaptive method")
             print(f"      🟠 Orange: Enhanced Adaptive (DINO + structural)")
             print(f"      🟣 Magenta: Combined method")
+            print(f"      🟥 Bright Red: DINO-guided CLIP smoothing (CLIP-DINOiser)")
             print(f"   💡 Toggle visibility in Rerun to compare methods side-by-side")
 
             # --- CONSOLIDATED HIGHLIGHT LOGIC ---
@@ -1707,3 +1741,111 @@ def get_adaptive_weights_by_scatter(points, initial_outliers, default_clip=0.6, 
         return 0.7, 0.3
     else:
         return default_clip, default_struct
+
+def batched_knn(x, k, batch_size=500):
+    """
+    Compute kNN indices for x in batches to avoid OOM.
+    Args:
+        x: (N, D) torch tensor (should be normalized if using cosine/L2)
+        k: int, number of neighbors
+        batch_size: int, batch size for processing
+    Returns:
+        knn_indices: (N, k) torch tensor of neighbor indices
+    """
+    N = x.shape[0]
+    device = x.device
+    knn_indices = []
+    for start in range(0, N, batch_size):
+        end = min(start + batch_size, N)
+        batch = x[start:end]  # (B, D)
+        dists = torch.cdist(batch, x)  # (B, N)
+        topk = dists.topk(k, largest=False)
+        knn_indices.append(topk.indices.cpu())
+    return torch.cat(knn_indices, dim=0)
+
+def dino_guided_clip_smoothing(points, clip_features, dino_features, text_features, threshold=0.2, k=10, mix_alpha=0.5, N_top=5000, batch_size=200, cluster_eps=0.05, cluster_min_samples=10):
+    import numpy as np
+    from sklearn.cluster import DBSCAN
+    N = points.shape[0]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Convert to torch
+    clip_feats = torch.from_numpy(clip_features).float().to(device)
+    dino_feats = torch.from_numpy(dino_features).float().to(device)
+    text_emb = torch.from_numpy(text_features).float().to(device).view(-1)
+    # Normalize
+    clip_feats = F.normalize(clip_feats, dim=-1)
+    text_emb = F.normalize(text_emb, dim=-1)
+    dino_norm = F.normalize(dino_feats, dim=-1)
+    # CLIP similarity
+    clip_sim = (clip_feats @ text_emb).view(-1)  # (N,)
+    # kNN in DINO space (batched) for top-N points
+    N_top = min(N_top, N)
+    top_indices = torch.topk(clip_sim, N_top).indices
+    dino_subset = dino_norm[top_indices]
+    clip_subset = clip_sim[top_indices]
+    knn_indices = batched_knn(dino_subset, k, batch_size=batch_size).to(device)  # (N_top, k)
+    # DINO affinity (cosine) for subset
+    affinity = torch.einsum('nd,nkd->nk', dino_subset, dino_subset[knn_indices])  # (N_top, k)
+    affinity = (affinity + 1) / 2  # [0,1]
+    # Smoothing for subset
+    neighbor_sims = clip_subset[knn_indices]  # (N_top, k)
+    weighted_sims = affinity * neighbor_sims  # (N_top, k)
+    smoothed_sim = weighted_sims.sum(dim=1) / (affinity.sum(dim=1) + 1e-8)  # (N_top,)
+    smoothed_sim = smoothed_sim.view(-1, 1)
+    # Optionally mix with original
+    final_sim = mix_alpha * clip_subset.view(-1, 1) + (1 - mix_alpha) * smoothed_sim  # (N_top, 1)
+    final_sim_np = final_sim.cpu().numpy().flatten()
+    mask = (final_sim_np > threshold)
+    selected_indices = top_indices.cpu().numpy()[mask]  # indices into full point cloud
+    highlight_points = points[selected_indices]
+    highlight_similarities = final_sim_np[mask]
+    # --- Clustering: extract largest spatial cluster from highlight_points ---
+    if len(highlight_points) > 0:
+        clustering = DBSCAN(eps=cluster_eps, min_samples=cluster_min_samples).fit(highlight_points)
+        labels = clustering.labels_
+        valid = labels != -1
+        if np.any(valid):
+            unique, counts = np.unique(labels[valid], return_counts=True)
+            largest = unique[np.argmax(counts)]
+            cluster_indices = np.where(labels == largest)[0]  # indices into highlight_points
+            final_indices = selected_indices[cluster_indices]  # indices into full point cloud
+            final_points = points[final_indices]
+            final_similarities = highlight_similarities[cluster_indices]
+        else:
+            final_indices = np.array([], dtype=int)
+            final_points = np.array([], dtype=points.dtype).reshape(0, 3)
+            final_similarities = np.array([])
+    else:
+        final_indices = np.array([], dtype=int)
+        final_points = np.array([], dtype=points.dtype).reshape(0, 3)
+        final_similarities = np.array([])
+    # Color: red, intensity by similarity
+    num_highlights = len(final_indices)
+    highlight_colors = np.zeros((num_highlights, 3))
+    if num_highlights > 0:
+        min_sim = final_similarities.min()
+        max_sim = final_similarities.max()
+        for i, sim in enumerate(final_similarities):
+            if max_sim > min_sim:
+                intensity = 0.4 + 0.6 * (sim - min_sim) / (max_sim - min_sim)
+            else:
+                intensity = 1.0
+            highlight_colors[i] = [intensity, 0.0, 0.0]  # Red
+    stats = {
+        'threshold': threshold,
+        'num_points': num_highlights,
+        'k': k,
+        'mix_alpha': mix_alpha,
+        'mean_sim': float(final_sim_np.mean()),
+        'max_sim': float(final_sim_np.max()),
+        'min_sim': float(final_sim_np.min()),
+        'clustering': {
+            'eps': cluster_eps,
+            'min_samples': cluster_min_samples,
+            'num_clusters': len(np.unique(labels[labels != -1])) if len(highlight_points) > 0 and np.any(valid) else 0,
+            'largest_cluster_size': len(cluster_indices) if len(highlight_points) > 0 and np.any(valid) else 0
+        }
+    }
+    print(f"Using device: {device}")
+    print(f"Smoothed sim stats: min={final_sim_np.min()}, max={final_sim_np.max()}, mean={final_sim_np.mean()}")
+    return final_indices, final_points, highlight_colors, final_sim_np, threshold, 'dino_clip_smoothing', stats

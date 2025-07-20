@@ -54,7 +54,7 @@ def main(cfg: DictConfig) -> None:
         # ---------------------------------------------------------------------
         # 3. Serve the Rerun stream on the configured port
         # ---------------------------------------------------------------------
-        port = cfg.server.port if "server" in cfg and "port" in cfg.server else 9878
+        port = cfg.server.port if "server" in cfg and "port" in cfg.server else 9876
         mode = cfg.server.mode if "server" in cfg and "mode" in cfg.server else "local"
         
         # Pass the scripted queries to the run session
@@ -67,7 +67,7 @@ def main(cfg: DictConfig) -> None:
             import rerun as rr
             from src.visualize_featurized_pointcloud import load_original_pointcloud
             rr.init("Original_Pointcloud_Only", spawn=True)
-            rr.spawn(port=9878)
+            rr.spawn(port=9876)
             rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
             try:
                 points, colors = load_original_pointcloud(cfg.file_type, cfg.original_pointcloud)
