@@ -1349,7 +1349,32 @@ class InteractiveTextSearch:
                     # Log points for this method
                     rr.log(f"world/all_methods_comparison/{method_name}", 
                             rr.Points3D(result['points'], colors=result['colors'], radii=0.008))
-                    
+
+                    # --- Bounding box for dino_clip_smoothing ---
+                    if method_name == 'dino_clip_smoothing' and len(result['points']) > 0:
+                        pts = result['points']
+                        bbox_min = pts.min(axis=0)
+                        bbox_max = pts.max(axis=0)
+                        # 8 corners of the box
+                        corners = np.array([
+                            [bbox_min[0], bbox_min[1], bbox_min[2]],
+                            [bbox_max[0], bbox_min[1], bbox_min[2]],
+                            [bbox_max[0], bbox_max[1], bbox_min[2]],
+                            [bbox_min[0], bbox_max[1], bbox_min[2]],
+                            [bbox_min[0], bbox_min[1], bbox_max[2]],
+                            [bbox_max[0], bbox_min[1], bbox_max[2]],
+                            [bbox_max[0], bbox_max[1], bbox_max[2]],
+                            [bbox_min[0], bbox_max[1], bbox_max[2]],
+                        ])
+                        # Edges of the box (pairs of indices into corners)
+                        edges = [
+                            [0,1],[1,2],[2,3],[3,0], # bottom
+                            [4,5],[5,6],[6,7],[7,4], # top
+                            [0,4],[1,5],[2,6],[3,7]  # sides
+                        ]
+                        for i, (start, end) in enumerate(edges):
+                            rr.log(f"world/all_methods_comparison/dino_clip_smoothing/bbox/edge_{i}", rr.LineStrips3D(np.array([corners[start], corners[end]]), colors=[[1,0,0]]))
+
                     # Add to summary
                     num_points = len(result['points'])
                     total_points_found += num_points
