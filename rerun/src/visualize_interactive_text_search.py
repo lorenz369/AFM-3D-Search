@@ -720,16 +720,16 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
     print(f"📈 Similarity stats - Min: {similarities.min():.3f}, Max: {similarities.max():.3f}, Mean: {similarities.mean():.3f}")
     
     # Define all methods to test
-    methods = ['iqr', 'percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined']
+    methods = ['percentile', 'z_score', 'adaptive', 'enhanced_adaptive', 'combined']
     
     # Color scheme for different methods
     method_colors = {
-        'iqr': [1.0, 0.0, 0.0],        # Red
         'percentile': [0.0, 1.0, 0.0],  # Green
         'z_score': [0.0, 0.0, 1.0],     # Blue
         'adaptive': [1.0, 1.0, 0.0],    # Yellow
         'enhanced_adaptive': [1.0, 0.5, 0.0],  # Orange
-        'combined': [1.0, 0.0, 1.0]     # Magenta
+        'combined': [1.0, 0.0, 1.0],    # Magenta
+        'topk': [1.0, 0.0, 0.0]         # Red for topk
     }
     
     results = {}
@@ -792,6 +792,58 @@ def run_all_outlier_methods(points, clip_features, text_query, clip_encoder=None
                 'method_used': method_used,
                 'stats': outlier_stats
             }
+    # Add topk method for comparison (always show top 500 by similarity, no threshold)
+    print("🔬 Testing topk method...")
+    if clip_encoder is not None and clip_features is not None and len(clip_features) > 0:
+        top_k = 500
+        if len(similarities) > 0:
+            sorted_indices = np.argsort(similarities)[::-1][:top_k]
+            topk_indices = sorted_indices
+            topk_points = points[topk_indices]
+            topk_similarities = similarities[topk_indices]
+            highlight_color = method_colors['topk']
+            min_sim = topk_similarities.min()
+            max_sim = topk_similarities.max()
+            num_highlights = len(topk_indices)
+            topk_colors = np.zeros((num_highlights, 3))
+            for i, sim in enumerate(topk_similarities):
+                if max_sim > min_sim:
+                    intensity = 0.4 + 0.6 * (sim - min_sim) / (max_sim - min_sim)
+                else:
+                    intensity = 1.0
+                topk_colors[i] = [c * intensity for c in highlight_color]
+            results['topk'] = {
+                'indices': topk_indices,
+                'points': topk_points,
+                'colors': topk_colors,
+                'similarities': topk_similarities,
+                'threshold': None,
+                'method_used': 'topk',
+                'stats': {'top_k': top_k, 'num_points': len(topk_indices)}
+            }
+            print(f"   ✓ topk: {len(topk_indices)} points (top {top_k} by similarity)")
+        else:
+            results['topk'] = {
+                'indices': np.array([]),
+                'points': np.array([]).reshape(0, 3),
+                'colors': np.array([]).reshape(0, 3),
+                'similarities': np.array([]),
+                'threshold': None,
+                'method_used': 'topk',
+                'stats': {'top_k': top_k, 'num_points': 0}
+            }
+            print(f"   ⚠️  topk: No points found (empty similarities)")
+    else:
+        results['topk'] = {
+            'indices': np.array([]),
+            'points': np.array([]).reshape(0, 3),
+            'colors': np.array([]).reshape(0, 3),
+            'similarities': np.array([]),
+            'threshold': None,
+            'method_used': 'topk',
+            'stats': {'top_k': 500, 'num_points': 0}
+        }
+        print(f"   ⚠️  topk: CLIP encoder or features missing")
     
     return results, similarities
 
@@ -995,9 +1047,8 @@ class InteractiveTextSearch:
         print("📈 Alternative Outlier Detection Methods:")
         print("  • outlier_method=enhanced_adaptive - Enhanced adaptive with DINO (default)")
         print("  • outlier_method=adaptive   - Auto-select best method based on data")
-        print("  • outlier_method=iqr        - Use IQR (Interquartile Range) method")
-        print("  • outlier_method=percentile - Use percentile-based detection")
         print("  • outlier_method=z_score    - Use Z-score method")
+        print("  • outlier_method=percentile - Use percentile-based detection")
         print("  • outlier_method=combined   - Use combined methods")
         print("  • use_statistical_outliers=true/false - Toggle statistical mode")
         print("")
@@ -1010,12 +1061,12 @@ class InteractiveTextSearch:
         print("")
         print("🔬 All-Methods Comparison (Default):")
         print("  • Shows all outlier methods simultaneously with different colors")
-        print("  • 🔴 Red: IQR | 🟢 Green: Percentile | 🔵 Blue: Z-Score")
-        print("  • 🟡 Yellow: Adaptive | 🟠 Orange: Enhanced Adaptive | 🟣 Magenta: Combined")
+        print("  • 🔴 Red: IQR method (Interquartile Range) | 🟢 Green: Percentile method (top 5%) | 🔵 Blue: Z-Score method (2 std devs)")
+        print("  • 🟡 Yellow: Adaptive method (auto-selected) | 🟠 Orange: Enhanced Adaptive (DINO + structural coherence) | 🟣 Magenta: Combined method (union of all)")
         print("  • Great for method comparison and analysis")
         print("  • Disable with: show_all_methods_comparison=false")
         print("")
-        print("🎯 Traditional Method Settings:")
+        print("�� Traditional Method Settings:")
         print("  • threshold=0.25            - Set fixed similarity threshold")
         print("  • topk=100                  - Set maximum number of results")
         print("")
@@ -1031,7 +1082,7 @@ class InteractiveTextSearch:
         print("  • chair                     - Basic enhanced adaptive search")
         print("  • red wooden table          - Multi-word enhanced adaptive search")
         print("  • use_dino_filtering=false  - Switch to CLIP-only")
-        print("  • outlier_method=iqr        - Switch outlier detection method")
+        print("  • outlier_method=z_score    - Switch outlier detection method")
         print("  • use_statistical_outliers=false - Switch to traditional")
         print("  • threshold=0.15            - Lower traditional threshold")
         print("  • grey_out_unmatched=true   - Enable focus mode (greyscale)")
@@ -1111,63 +1162,64 @@ class InteractiveTextSearch:
             # FOCUSED APPROACH: Use only enhanced adaptive method (orange highlights)
             print(f"🎯 Running enhanced adaptive method for '{query}'...")
             
-            # Optional: Run all methods comparison if enabled
-            if getattr(self.config, 'show_all_methods_comparison', False):
-                print(f"🎨 Running ALL outlier methods for comparison...")
-                all_methods_results, similarities = run_all_outlier_methods(
-                    self.points,
-                    self.features_info['clip'],
-                    query,
-                    clip_encoder=self.clip_encoder,
-                    dino_features=self.features_info['dino'],
-                    min_threshold=0.05,
-                    percentile_threshold=95,
-                    iqr_multiplier=2.5,
-                    z_score_threshold=2.0,
-                    min_points=5
-                )
-                
-                # Clear previous all-methods results
-                rr.log("world/all_methods_comparison", rr.Clear(recursive=True))
-                
-                # Log each method's results with different colors
-                method_summary = []
-                total_points_found = 0
-                for method_name, result in all_methods_results.items():
-                    if len(result['points']) > 0:
-                        # Log points for this method
-                        rr.log(f"world/all_methods_comparison/{method_name}", 
-                               rr.Points3D(result['points'], colors=result['colors'], radii=0.008))
-                        
-                        # Add to summary
-                        num_points = len(result['points'])
-                        total_points_found += num_points
-                        percentage = (num_points / len(self.points)) * 100
-                        method_summary.append(f"• {method_name.upper()}: {num_points:,} points ({percentage:.1f}%) - threshold: {result['threshold']:.3f}")
-                        
-                        # Log individual method stats
-                        self._log_stat_text(f"stats/all_methods/{method_name}/num_points", num_points)
-                        self._log_stat_text(f"stats/all_methods/{method_name}/percentage", round(percentage, 2))
-                        self._log_stat_text(f"stats/all_methods/{method_name}/threshold", round(result['threshold'], 4))
-                        if len(result['similarities']) > 0:
-                            self._log_stat_text(f"stats/all_methods/{method_name}/max_similarity", round(float(result['similarities'].max()), 4))
-                            self._log_stat_text(f"stats/all_methods/{method_name}/mean_similarity", round(float(result['similarities'].mean()), 4))
-                    else:
-                        method_summary.append(f"• {method_name.upper()}: No outliers found")
-                        self._log_stat_text(f"stats/all_methods/{method_name}/num_points", 0)
-                        self._log_stat_text(f"stats/all_methods/{method_name}/percentage", 0.0)
-                        self._log_stat_text(f"stats/all_methods/{method_name}/threshold", 0.0)
-                
-                # Log summary text with legend
-                legend_text = """🎨 COLOR LEGEND:
+            # Run all methods comparison
+            print(f"🎨 Running ALL outlier methods for comparison...")
+            all_methods_results, similarities = run_all_outlier_methods(
+                self.points,
+                self.features_info['clip'],
+                query,
+                clip_encoder=self.clip_encoder,
+                dino_features=self.features_info['dino'],
+                min_threshold=0.05,
+                percentile_threshold=95,
+                iqr_multiplier=2.5,
+                z_score_threshold=2.0,
+                min_points=5
+            )
+            
+            # Clear previous all-methods results
+            rr.log("world/all_methods_comparison", rr.Clear(recursive=True))
+            
+            # Log each method's results with different colors
+            method_summary = []
+            total_points_found = 0
+            for method_name, result in all_methods_results.items():
+                # Format threshold safely for display
+                threshold_display = f"{result['threshold']:.3f}" if result['threshold'] is not None else "N/A"
+                if len(result['points']) > 0:
+                    # Log points for this method
+                    rr.log(f"world/all_methods_comparison/{method_name}", 
+                            rr.Points3D(result['points'], colors=result['colors'], radii=0.008))
+                    
+                    # Add to summary
+                    num_points = len(result['points'])
+                    total_points_found += num_points
+                    percentage = (num_points / len(self.points)) * 100
+                    method_summary.append(f"• {method_name.upper()}: {num_points:,} points ({percentage:.1f}%) - threshold: {threshold_display}")
+                    
+                    # Log individual method stats
+                    self._log_stat_text(f"stats/all_methods/{method_name}/num_points", num_points)
+                    self._log_stat_text(f"stats/all_methods/{method_name}/percentage", round(percentage, 2))
+                    self._log_stat_text(f"stats/all_methods/{method_name}/threshold", threshold_display)
+                    if len(result['similarities']) > 0:
+                        self._log_stat_text(f"stats/all_methods/{method_name}/max_similarity", round(float(result['similarities'].max()), 4))
+                        self._log_stat_text(f"stats/all_methods/{method_name}/mean_similarity", round(float(result['similarities'].mean()), 4))
+                else:
+                    method_summary.append(f"• {method_name.upper()}: No outliers found")
+                    self._log_stat_text(f"stats/all_methods/{method_name}/num_points", 0)
+                    self._log_stat_text(f"stats/all_methods/{method_name}/percentage", 0.0)
+                    self._log_stat_text(f"stats/all_methods/{method_name}/threshold", threshold_display)
+            
+            # Log summary text with legend
+            legend_text = """🎨 COLOR LEGEND:
 🔴 RED: IQR method (Interquartile Range)
 🟢 GREEN: Percentile method (top 5%)
 🔵 BLUE: Z-Score method (2 std devs)
 🟡 YELLOW: Adaptive method (auto-selected)
 🟠 ORANGE: Enhanced Adaptive (DINO + structural coherence)
 🟣 MAGENTA: Combined method (union of all)"""
-                
-                summary_text = f"""🔬 ALL OUTLIER METHODS COMPARISON: '{query}'
+            
+            summary_text = f"""🔬 ALL OUTLIER METHODS COMPARISON: '{query}'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Total points found across all methods: {total_points_found:,} / {len(self.points):,} points
 
@@ -1178,28 +1230,24 @@ class InteractiveTextSearch:
 
 💡 TIP: Toggle visibility in Rerun to compare methods side-by-side
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
-                
-                rr.log("docs/all_methods_summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO))
-                
-                # Log overall comparison stats
-                self._log_stat_text("stats/all_methods/total_points_found", total_points_found)
-                self._log_stat_text("stats/all_methods/total_percentage", round((total_points_found / len(self.points)) * 100, 2))
-                
-                # Store results for potential use
-                self.all_methods_results = all_methods_results
-                self.last_similarities = similarities
-
-                # Console output for all-methods comparison
-                print(f"🎨 All outlier methods comparison completed for '{query}'")
-                print(f"   📊 Total points found: {total_points_found:,} across all methods")
-                print(f"   🎯 Check Rerun viewer for color-coded results:")
-                print(f"      🔴 Red: IQR method")
-                print(f"      🟢 Green: Percentile method") 
-                print(f"      🔵 Blue: Z-Score method")
-                print(f"      🟡 Yellow: Adaptive method")
-                print(f"      🟠 Orange: Enhanced Adaptive (DINO + structural)")
-                print(f"      🟣 Magenta: Combined method")
-                print(f"   💡 Toggle visibility in Rerun to compare methods side-by-side")
+            rr.log("docs/all_methods_summary", rr.TextLog(summary_text, level=rr.TextLogLevel.INFO))
+            # Log overall comparison stats
+            self._log_stat_text("stats/all_methods/total_points_found", total_points_found)
+            self._log_stat_text("stats/all_methods/total_percentage", round((total_points_found / len(self.points)) * 100, 2))
+            # Store results for potential use
+            self.all_methods_results = all_methods_results
+            self.last_similarities = similarities
+            # Console output for all-methods comparison
+            print(f"🎨 All outlier methods comparison completed for '{query}'")
+            print(f"   📊 Total points found: {total_points_found:,} across all methods")
+            print(f"   🎯 Check Rerun viewer for color-coded results:")
+            print(f"      🔴 Red: IQR method")
+            print(f"      🟢 Green: Percentile method") 
+            print(f"      🔵 Blue: Z-Score method")
+            print(f"      🟡 Yellow: Adaptive method")
+            print(f"      🟠 Orange: Enhanced Adaptive (DINO + structural)")
+            print(f"      🟣 Magenta: Combined method")
+            print(f"   💡 Toggle visibility in Rerun to compare methods side-by-side")
             
             if use_statistical_outliers:
                 # Choose method based on DINO availability and user preference
