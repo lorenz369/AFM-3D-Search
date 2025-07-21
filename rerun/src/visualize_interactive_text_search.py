@@ -27,14 +27,14 @@ import torch
 import torch.nn.functional as F
 from sklearn.cluster import DBSCAN
 
-from src.clip_encoder import ClipEncoder
-from src.visualize_featurized_pointcloud import (
+from clip_encoder import ClipEncoder # old src.
+from visualize_featurized_pointcloud import (
     create_text_similarity_highlights,
     estimate_normals_and_mesh,
     features_to_colors_pca,
     load_featurized_pointcloud,
     load_original_pointcloud,
-)
+) # old src.
 
 def detect_similarity_outliers_enhanced(similarities, dino_features=None, points=None, method='adaptive', 
                                        min_threshold=0.1, percentile_threshold=95, iqr_multiplier=2.5, 

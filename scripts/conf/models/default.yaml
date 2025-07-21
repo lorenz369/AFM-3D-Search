@@ -1,0 +1,8 @@
+# conf/models/default.yaml
+
+clip:
+  version: "ViT-L/14"
+sam:
+  checkpoint: "sam_vit_h_4b8939.pth"
+dino:
+  version: "dinov2_vits14"

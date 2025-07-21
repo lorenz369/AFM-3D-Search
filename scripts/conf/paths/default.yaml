@@ -1,0 +1,5 @@
+# conf/paths/default.yaml
+
+data_root: "outputs/arkit_scenes"
+raw_dir_name: "raw_subsampled/Training"
+completed_dir_name: "completed"
