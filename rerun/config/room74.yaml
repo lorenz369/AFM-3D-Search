@@ -7,7 +7,7 @@ defaults:
   - _self_
 
 # REQUIRED: directory containing featurised *.pt files          
-pointcloud_dir: ../data/output/room_74/ # <-- override via CLI
+pointcloud_dir: ../data/completed/room74 # <-- override via CLI
 
 # In base_config.yaml or interactive.yaml
 # original_pointcloud: ../data/output/arkit_scenes/raw/Training

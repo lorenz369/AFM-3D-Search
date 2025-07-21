@@ -1,0 +1,11 @@
+enabled: true  # Set to true to run the queries below instead of an interactive session
+queries:
+  - "plants"
+  - "bed"
+  - "trophy"
+  - "conical hat"
+  - "green ball"
+  - "microwave"
+  - "sink"
+  - "monitor"
+  - "desk"

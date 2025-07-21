@@ -1,0 +1,11 @@
+enabled: true  # Set to true to run the queries below instead of an interactive session
+queries:
+  - "pan"
+  - "window"
+  - "bed"
+  - "laptop"
+  - "sink"
+  - "door"
+  - "light bulb"
+  - "blanket"
+  - "pillow"
