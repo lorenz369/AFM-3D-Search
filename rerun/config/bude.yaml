@@ -3,7 +3,7 @@
 
 defaults:
   - server: remote
-  - scripted_run: "bude_marco"
+  - scripted_run: "bude"
   - _self_
 
 # REQUIRED: directory containing featurised *.pt files          
