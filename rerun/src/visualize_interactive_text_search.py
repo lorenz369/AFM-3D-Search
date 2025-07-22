@@ -27,14 +27,34 @@ import torch
 import torch.nn.functional as F
 from sklearn.cluster import DBSCAN
 
-from clip_encoder import ClipEncoder # old src.
-from visualize_featurized_pointcloud import (
-    create_text_similarity_highlights,
-    estimate_normals_and_mesh,
-    features_to_colors_pca,
-    load_featurized_pointcloud,
-    load_original_pointcloud,
-) # old src.
+# Necessary check to allow parallel eval pipeline
+try:
+    from clip_encoder import ClipEncoder
+except ImportError:
+    try:
+        from src.clip_encoder import ClipEncoder
+    except ImportError:
+        raise ImportError("Could not import ClipEncoder from clip_encoder or src.clip_encoder")
+
+try:
+    from visualize_featurized_pointcloud import (
+        create_text_similarity_highlights,
+        estimate_normals_and_mesh,
+        features_to_colors_pca,
+        load_featurized_pointcloud,
+        load_original_pointcloud,
+    )
+except ImportError:
+    try:
+        from src.visualize_featurized_pointcloud import (
+            create_text_similarity_highlights,
+            estimate_normals_and_mesh,
+            features_to_colors_pca,
+            load_featurized_pointcloud,
+            load_original_pointcloud,
+        )
+    except ImportError:
+        raise ImportError("Could not import visualize_featurized_pointcloud from visualize_featurized_pointcloud or src.visualize_featurized_pointcloud")
 
 def detect_similarity_outliers_enhanced(similarities, dino_features=None, points=None, method='adaptive', 
                                        min_threshold=0.1, percentile_threshold=95, iqr_multiplier=2.5, 

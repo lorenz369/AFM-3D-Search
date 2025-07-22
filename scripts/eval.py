@@ -120,9 +120,31 @@ def process_text_query(scene_id, text_query, clip_version="ViT-B/32", device="cu
         print(f"❌ Failed to load features for scene {scene_id}")
         print(f"Error: {e}")
         return np.array([]), np.array([]).reshape(0, 3)
+
+    # Debug: Print shapes, min/max, NaN/Inf checks
+    print("[DEBUG] points shape:", points.shape)
+    print("[DEBUG] points min/max:", points.min(axis=0), points.max(axis=0))
+    print("[DEBUG] Any NaN in points?", np.isnan(points).any())
+    print("[DEBUG] Any Inf in points?", np.isinf(points).any())
+    print("[DEBUG] CLIP features shape:", clip_features.shape)
+    print("[DEBUG] CLIP features min/max:", clip_features.min(), clip_features.max())
+    print("[DEBUG] Any NaN in CLIP features?", np.isnan(clip_features).any())
+    print("[DEBUG] Any Inf in CLIP features?", np.isinf(clip_features).any())
+    print("[DEBUG] DINO features shape:", dino_features.shape)
+    print("[DEBUG] DINO features min/max:", dino_features.min(), dino_features.max())
+    print("[DEBUG] Any NaN in DINO features?", np.isnan(dino_features).any())
+    print("[DEBUG] Any Inf in DINO features?", np.isinf(dino_features).any())
     
-    # Encode text query
-    clip_encoder = ClipEncoder(version=clip_version, device=device)
+    # Auto-detect CLIP model version based on feature dimension
+    feature_dim = clip_features.shape[1]
+    if feature_dim == 512:
+        detected_version = "ViT-B/32"
+    elif feature_dim == 768:
+        detected_version = "ViT-L/14"
+    else:
+        raise ValueError(f"Unknown CLIP feature dimension: {feature_dim}")
+
+    clip_encoder = ClipEncoder(version=detected_version, device=device)
     text_features = clip_encoder.encode_text(text_query).cpu().numpy()
     
     # Run CLIP DINOiser
@@ -151,17 +173,30 @@ def log_rerun_comparison(scene_id, points, predicted_indices, gt_boxes, query, r
     rr.init(recording_id, recording_id=recording_id, spawn=False)
     rr.set_time_sequence("query", 0)
 
-    # Log the full point cloud (background)
-    rr.log("pointcloud", rr.Points3D(points, colors=[0.7, 0.7, 0.7], radii=0.005))
+    # Load the point cloud with color if available
+    import open3d as o3d
+    paths = get_scene_paths(scene_id)
+    pcd = o3d.io.read_point_cloud(str(paths['point_cloud']))
+    if pcd.has_colors():
+        rgb = np.asarray(pcd.colors)
+        if rgb.max() > 1.0:
+            rgb = rgb / 255.0
+    else:
+        rgb = np.full_like(points, 0.7)  # fallback to gray
+
+    # Log the full point cloud (original colors)
+    rr.log("pointcloud", rr.Points3D(points, colors=rgb, radii=0.005))
 
     # Log predicted points (your method)
-    if len(predicted_indices) > 0:
-        rr.log("predicted", rr.Points3D(points[predicted_indices], colors=[1.0, 0.0, 0.0], radii=0.01))
+    #if len(predicted_indices) > 0:
+    #    rr.log("predicted", rr.Points3D(points[predicted_indices], colors=[1.0, 0.0, 0.0], radii=0.01))
 
-    # Log ground truth boxes (as green corners)
+    # Log ground truth boxes (as 3D AABBs)
     for i, gt_box in enumerate(gt_boxes):
-        gt_points = np.array(gt_box)  # shape (8, 3) for a box
-        rr.log(f"gt_box_{i}", rr.Points3D(gt_points, colors=[0.0, 1.0, 0.0], radii=0.012))
+        gt_box = np.array(gt_box)  # shape (3, 2)
+        center = gt_box.mean(axis=1)
+        half_size = (gt_box[:, 1] - gt_box[:, 0]) / 2
+        #rr.log(f"gt_box_{i}", rr.Boxes3D(centers=[center], half_sizes=[half_size], colors=[[0, 1, 0]]))
 
     # Save the log for later viewing
     save_path = os.path.join(run_dir, f"{recording_id}.rrd")
