@@ -1,4 +1,4 @@
-enabled: true  # Set to true to run the queries below instead of an interactive session
+enabled: false  # Set to true to run the queries below instead of an interactive session
 queries:
   - "helmet"
   - "laptop"
