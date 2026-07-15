@@ -1,21 +1,26 @@
-# AFM Group 2
+# AFM 3D Search — Natural-Language Object Search in 3D Scenes
+
+Reconstruct a 3D scene from plain RGB video and search it with natural language ("red chair", "laptop on the desk") — training-free, built entirely from pretrained foundation models.
+
+**Team:** Marco Lorenz ([@lorenz369](https://github.com/lorenz369)), Sami Haddouti ([@SamiHaddouti](https://github.com/SamiHaddouti)), Tim Cramer ([@tim-cramer](https://github.com/tim-cramer)) — developed in the Applied Foundation Models practical course at TUM.
+
+## How it works
+
+1. **Reconstruction** — [VGGT](https://github.com/facebookresearch/vggt) (git submodule) turns an RGB video into a dense 3D point cloud; dense SLAM (MASt3R-SLAM) and ARKit Visual-Inertial Odometry were evaluated as alternative reconstruction sources (`src/afm_3d_search/pipeline/reconstruction.py`).
+2. **Featurization** — each point is enriched with CLIP semantics and DINO features, with SAM providing segmentation masks (`src/afm_3d_search/pipeline/feature_extraction.py`).
+3. **Search** — a text query is embedded with CLIP and matched against the featurized point cloud; configurable outlier detection and DINO-based structural filtering sharpen the hits.
+4. **Visualization** — interactive [Rerun](https://rerun.io/) viewer, either local or streamed from a remote GPU server (`rerun/`).
+
+A FastAPI service with a job queue (`src/afm_3d_search/api/`, `worker.py`) wraps the pipeline for end-to-end scene processing. See [DEMO.md](DEMO.md) for a step-by-step walkthrough and [RERUN_demo.md](RERUN_demo.md) for the visualization demo.
+
+## Table of Contents
+- [Data](#data)
+- [Setup](#setup)
+- [Visualization of Point Clouds](#visualization-of-point-clouds)
+- [Development Notes (TUM Infrastructure)](#development-notes-tum-infrastructure)
 
 ## Data
 Large datasets and results are available in our [Google Drive folder](https://drive.google.com/drive/folders/184vJEGNb4RQ5tb9fF1LaFxy98oRriyPi?usp=drive_link).
-
-## Table of Contents
-- [Setup](#setup)
-  - [Git Submodules](#git-submodules)
-  - [Server Login](#server-login)
-- [Useful Commands](#useful-commands)
-  - [GPU Commands](#gpu-commands)
-  - [CPU Usage](#cpu-usage)
-  - [Disk Space](#disk-space)
-  - [Debugging Session](#debugging-session)
-- [Visualization of Point Clouds](#visualization-of-point-clouds)
-  - [Environment Setup](#environment-setup-1)
-  - [Usage](#usage)
-  - [Script Options](#script-options)
 
 ## Setup
 
@@ -32,57 +37,7 @@ git submodule update --init --recursive
 git submodule update --remote
 ```
 
-### Server Login
-Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=58022 s0125@atcremers45.in.tum.de)
-
-**Server Status Monitor**: [https://adm9.in.tum.de/status](https://adm9.in.tum.de/status)
-
-| Server | SSH Command | RAM | GPU VRAM | Notes |
-|--------|-------------|-----|----------|-------|
-| atcremers45 | `ssh atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
-| atcremers71 | `ssh atcremers71.in.tum.de` | 64 GB | 16 GB | |
-| atcremers72 | `ssh atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
-| devcube1 | `ssh devcube1.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
-| devcube2 | `ssh devcube2.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
-
-Copy stuff to server (example)
-```bash
-rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/ s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/
-```
-
-Sync data dir (example)
-```
-rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data /home/marco/Marco/AFM-3D-Search/
-rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremers45.in.tum.de:~/AFM-3D-Search/
-```
-
-## Port Forwarding
-```
-ssh -L 9878:localhost:9878 atcremers45.in.tum.de
-ssh -L 9878:localhost:9878 runpod
-```
-
-## Useful Commands
-
-### GPU Commands
-```bash
-nvidia-smi #Overview
-```
-
-### CPU Usage
-```bash
-htop
-```
-
-### Disk Space
-```bash
-df -f
-```
-
-### Debugging Session
-```bash
-salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:00:00 --mail-type=NONE --part=PRACT --qos=practical_course
-```
+For the full environment setup (uv, dependencies, VGGT), follow [DEMO.md](DEMO.md).
 
 ## Visualization of Point Clouds
 
@@ -203,3 +158,57 @@ python rerun/scripts/visualize_mast3r_pointcloud.py <slam_dir> [--mode serve|sav
 - **Configurable outlier detection and filtering** (see terminal `help`)
 
 ---
+
+## Development Notes (TUM Infrastructure)
+
+### Server Login
+Login (after copying ssh key to server with ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=58022 s0125@atcremers45.in.tum.de)
+
+**Server Status Monitor**: [https://adm9.in.tum.de/status](https://adm9.in.tum.de/status)
+
+| Server | SSH Command | RAM | GPU VRAM | Notes |
+|--------|-------------|-----|----------|-------|
+| atcremers45 | `ssh atcremers45.in.tum.de` | 16 GB | 12 GB | Also available: 45-66, 75, 76 |
+| atcremers71 | `ssh atcremers71.in.tum.de` | 64 GB | 16 GB | |
+| atcremers72 | `ssh atcremers72.cvai.cit.tum.de` | 32 GB | 16 GB | |
+| devcube1 | `ssh devcube1.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
+| devcube2 | `ssh devcube2.cvai.cit.tum.de` | 255 GB | 24 GB | High-end server |
+
+Copy stuff to server (example)
+```bash
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data/ s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data/
+```
+
+Sync data dir (example)
+```
+rsync -avz -e "ssh -p 58022" s0125@atcremers45.in.tum.de:~/AFM-3D-Search/data /home/marco/Marco/AFM-3D-Search/
+rsync -avz -e "ssh -p 58022" /home/marco/Marco/AFM-3D-Search/data s0125@atcremers45.in.tum.de:~/AFM-3D-Search/
+```
+
+### Port Forwarding
+```
+ssh -L 9878:localhost:9878 atcremers45.in.tum.de
+ssh -L 9878:localhost:9878 runpod
+```
+
+### Useful Commands
+
+#### GPU Commands
+```bash
+nvidia-smi #Overview
+```
+
+#### CPU Usage
+```bash
+htop
+```
+
+#### Disk Space
+```bash
+df -f
+```
+
+#### Debugging Session
+```bash
+salloc --nodes=1 --cpus-per-task=4 --mem=32G --gres=gpu:1,VRAM:24G --time=0-12:00:00 --mail-type=NONE --part=PRACT --qos=practical_course
+```
